@@ -1,34 +1,29 @@
 {
-  "name": "@gramio/scenes",
-  "version": "0.0.1",
-  "description": "Scenes plugin for GramIO",
-  "main": "dist/index.js",
-  "type": "commonjs",
-  "homepage": "https://github.com/gramiojs/scenes",
-  "readme": "https://gramio.netlify.app/plugins/official/scenes.html",
-  "scripts": {
-    "prepublishOnly": "tsc && bunx tsc-alias",
-    "generate": "bun scripts/generate.ts"
-  },
-  "keywords": [
-    "gramio",
-    "gramio-plugin",
-    "telegram-bot-api",
-    "telegram-bot"
-  ],
-  "devDependencies": {
-    "@biomejs/biome": "1.7.2",
-    "@types/bun": "^1.1.1",
-    "gramio": "^0.0.29",
-    "typescript": "^5.4.5"
-  },
-  "peerDependencies": {
-    "gramio": "^0.0.27"
-  },
-  "files": [
-    "dist"
-  ],
-  "dependencies": {
-    "@gramio/storage": "^0.0.2"
-  }
+	"name": "@gramio/scenes",
+	"version": "0.0.1",
+	"description": "Scenes plugin for GramIO",
+	"main": "dist/index.js",
+	"type": "commonjs",
+	"homepage": "https://github.com/gramiojs/scenes",
+	"readme": "https://gramio.netlify.app/plugins/official/scenes.html",
+	"scripts": {
+		"prepublishOnly": "tsc && bunx tsc-alias",
+		"generate": "bun scripts/generate.ts"
+	},
+	"keywords": ["gramio", "gramio-plugin", "telegram-bot-api", "telegram-bot"],
+	"devDependencies": {
+		"@biomejs/biome": "1.7.2",
+		"@types/bun": "^1.1.1",
+		"gramio": "^0.0.29",
+		"middleware-io": "^2.8.1",
+		"typescript": "^5.4.5"
+	},
+	"peerDependencies": {
+		"gramio": "^0.0.27",
+		"middleware-io": "^2.8.1"
+	},
+	"files": ["dist"],
+	"dependencies": {
+		"@gramio/storage": "^0.0.2"
+	}
 }

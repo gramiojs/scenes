@@ -1,41 +1,40 @@
 import { type Storage, inMemoryStorage } from "@gramio/storage";
 import { Plugin } from "gramio";
-import type { Scene } from "scene";
+import type { AnyScene } from "scene";
+import { getInActiveSceneHandler, getSceneHandlers } from "utils";
 
 export interface ScenesOptions {
 	storage?: Storage;
 }
 
-export function scenes(scenes: Scene[], options?: ScenesOptions) {
+export interface ScenesStorageData {
+	name: string;
+	params: unknown;
+}
+
+export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
 
 	return new Plugin("@gramio/scenes")
 		.group((bot) =>
 			bot.on(["message", "callback_query"], async (context, next) => {
 				const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-				const sceneName = await storage.get<string>(key);
-				if (!sceneName) return next();
+				const sceneData = await storage.get<ScenesStorageData>(key);
+				console.log("DATA", sceneData);
+				if (!sceneData) return next();
 
-				const scene = scenes.find((x) => x.name === sceneName);
+				const scene = scenes.find((x) => x.name === sceneData.name);
 				if (!scene) return next();
 
-				// some stuff
-
-				return next();
+				// @ts-expect-error
+				context.scene = getInActiveSceneHandler(context, storage, sceneData);
+				// @ts-expect-error
+				return scene.compose(context);
 			}),
 		)
 		.derive(["message", "callback_query"], (context) => {
-			const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-
 			return {
-				scene: {
-					enter: (scene: Scene) => {
-						storage.set(key, scene.name);
-					},
-					exit: () => {
-						storage.delete(key);
-					},
-				},
+				scene: getSceneHandlers(context, storage),
 			};
 		});
 }
