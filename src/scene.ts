@@ -8,7 +8,9 @@ import type {
 	MaybeArray,
 	UpdateName,
 } from "gramio";
-import { Composer, noopNext } from "middleware-io";
+import { Composer } from "gramio/dist/composer";
+import { noopNext } from "middleware-io";
+import type { getInActiveSceneHandler } from "utils";
 
 export type AnyScene = Scene<any, any, any>;
 
@@ -17,29 +19,18 @@ export class Scene<
 	Errors extends ErrorDefinitions = {},
 	Derives extends DeriveDefinitions = DeriveDefinitions & {
 		global: {
-			scene: {
-				enter: <Scene extends AnyScene>(
-					...args: Scene["_"]["params"] extends never
-						? []
-						: [params: Scene["_"]["params"]]
-				) => void;
-				exit: () => void;
-			};
+			scene: ReturnType<typeof getInActiveSceneHandler>;
 		};
 	},
 > {
 	/** @internal */
-	_!: {
-		params: Params;
+	_ = {
+		params: {} as Params,
+		composer: new Composer(),
 	};
 
 	name: string;
-
-	private composer = Composer.builder<
-		Context<Bot> & {
-			[key: string]: unknown;
-		}
-	>();
+	stepsCount = 0;
 
 	constructor(name: string) {
 		this.name = name;
@@ -52,7 +43,9 @@ export class Scene<
 			Derives & {
 				global: {
 					scene: Derives["global"] extends { scene: any }
-						? Derives["global"]["scene"] & { params: SceneParams }
+						? Omit<Derives["global"]["scene"], "params"> & {
+								params: SceneParams;
+							}
 						: {};
 				};
 			}
@@ -63,14 +56,13 @@ export class Scene<
 		updateName: MaybeArray<T>,
 		handler: Handler<ContextType<Bot, T> & Derives["global"] & Derives[T]>,
 	) {
-		return this.use(async (context, next) => {
-			if (context.is(updateName)) await handler(context, next);
-			else await next();
-		});
+		this._.composer.on(updateName, handler);
+
+		return this;
 	}
 
 	use(handler: Handler<Context<Bot> & Derives["global"]>) {
-		this.composer.use(handler);
+		this._.composer.use(handler);
 
 		return this;
 	}
@@ -84,23 +76,36 @@ export class Scene<
 		updateName: MaybeArray<T> | Handler<Context<Bot> & Derives["global"]>,
 		handler?: Handler<Context<Bot> & Derives["global"]>,
 	) {
+		const stepId = this.stepsCount++;
+		console.log(stepId);
 		if (Array.isArray(updateName) || typeof updateName === "string") {
 			if (!handler)
 				throw new Error("You must specify handler as the second argument");
 
-			return this.use((context, next) => {
-				if (context.is(updateName)) return handler(context, next);
+			return this.use(async (context, next) => {
+				// @ts-expect-error
+				if (context.is(updateName) && context.scene.step.id === stepId)
+					return handler(context, next);
+				// @ts-expect-error
+				if (context.scene.step.id > stepId) return await next();
 			});
 		}
 
-		return this.use(updateName);
+		return this.use(async (context, next) => {
+			// @ts-expect-error
+			if (context.scene.step.id === stepId) return updateName(context, next);
+			// @ts-expect-error
+			if (context.scene.step.id > stepId) return await next();
+		});
 	}
 
-	compose(
+	async compose(
 		context: Context<Bot> & {
 			[key: string]: unknown;
 		},
+		onNext?: () => unknown,
 	) {
-		this.composer.compose()(context, noopNext);
+		await this._.composer.composed(context, noopNext);
+		onNext?.();
 	}
 }
