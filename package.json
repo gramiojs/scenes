@@ -8,7 +8,8 @@
     "readme": "https://gramio.dev/plugins/official/scenes.html",
     "scripts": {
         "prepublishOnly": "tsc && bunx tsc-alias",
-        "generate": "bun scripts/generate.ts"
+        "generate": "bun scripts/generate.ts",
+        "jsr": "bun scripts/release-jsr.ts"
     },
     "keywords": [
         "gramio",
