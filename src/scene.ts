@@ -1,4 +1,5 @@
 import type {
+	AnyPlugin,
 	Bot,
 	Context,
 	ContextType,
@@ -6,6 +7,7 @@ import type {
 	ErrorDefinitions,
 	Handler,
 	MaybeArray,
+	MaybePromise,
 	UpdateName,
 } from "gramio";
 import { Composer } from "gramio/dist/composer";
@@ -50,6 +52,18 @@ export class Scene<
 				};
 			}
 		>;
+	}
+
+	/**
+	 * ! ** At the moment, it can only pick up types** */
+	extend<NewPlugin extends AnyPlugin>(
+		plugin: MaybePromise<NewPlugin>,
+	): Scene<
+		Params,
+		Errors & NewPlugin["_"]["Errors"],
+		Derives & NewPlugin["_"]["Derives"]
+	> {
+		return this;
 	}
 
 	on<T extends UpdateName>(
