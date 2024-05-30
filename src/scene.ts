@@ -12,7 +12,7 @@ import type {
 } from "gramio";
 import { Composer } from "gramio/dist/composer";
 import { noopNext } from "middleware-io";
-import type { getInActiveSceneHandler } from "utils";
+import type { getInActiveSceneHandler } from "./utils";
 
 export type AnyScene = Scene<any, any, any>;
 

@@ -1,7 +1,7 @@
 import { type Storage, inMemoryStorage } from "@gramio/storage";
 import { Plugin } from "gramio";
-import type { AnyScene } from "scene";
-import { getInActiveSceneHandler, getSceneHandlers } from "utils";
+import type { AnyScene } from "./scene";
+import { getInActiveSceneHandler, getSceneHandlers } from "./utils";
 
 export interface ScenesOptions {
 	storage?: Storage;
