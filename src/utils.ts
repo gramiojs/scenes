@@ -33,7 +33,7 @@ export function getSceneHandlers(
 			// @ts-expect-error
 			await scene.compose(context, async () => {
 				const sceneData = await storage.get<ScenesStorageData>(key);
-				storage.set(key, { ...sceneData, firstTime: false });
+				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		},
 		exit: () => {
@@ -76,7 +76,7 @@ export function getInActiveSceneHandler<Params>(
 			// @ts-expect-error
 			await scene.compose(context, async () => {
 				const sceneData = await storage.get<ScenesStorageData>(key);
-				storage.set(key, { ...sceneData, firstTime: false });
+				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		},
 		exit: () => {
@@ -110,7 +110,7 @@ export function getStepDerives(
 			// @ts-expect-error
 			await scene.compose(context, async () => {
 				const sceneData = await storage.get<ScenesStorageData>(key);
-				storage.set(key, { ...sceneData, firstTime: false });
+				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		},
 		previous: async () => {
@@ -128,7 +128,7 @@ export function getStepDerives(
 			// @ts-expect-error
 			await scene.compose(context, async () => {
 				const sceneData = await storage.get<ScenesStorageData>(key);
-				storage.set(key, { ...sceneData, firstTime: false });
+				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		},
 	};

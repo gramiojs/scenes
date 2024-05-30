@@ -37,7 +37,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			// @ts-expect-error
 			return scene.compose(context, async () => {
 				const sceneData = await storage.get<ScenesStorageData>(key);
-				storage.set(key, { ...sceneData, firstTime: false });
+				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		})
 		.derive(["message", "callback_query"], (context) => {
