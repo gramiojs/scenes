@@ -1,0 +1,12 @@
+{
+    "name": "@gramio/scenes",
+    "version": "0.0.1",
+    "exports": "./src/index.ts",
+    "publish": {
+        "include": ["deno.json", "src", "README.md", "tsconfig.json"]
+    },
+    "imports": {
+        "gramio": "jsr:@gramio/core@^0.0.39",
+        "middleware-io": "npm:middleware-io@^2.8.1"
+    }
+}
