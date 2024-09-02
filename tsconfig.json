@@ -1,21 +1,15 @@
 {
 	"compilerOptions": {
 		"lib": ["ESNext"],
-		"target": "ES2022",
-		"module": "NodeNext",
-		"moduleDetection": "force",
-
-		/* Bundler mode */
-		"moduleResolution": "NodeNext",
-		/* Linting */
-		"skipLibCheck": true,
+		"module": "ESNext",
+		"target": "ESNext",
+		"moduleResolution": "Bundler",
+		"esModuleInterop": true,
 		"strict": true,
-		"noFallthroughCasesInSwitch": true,
-		"forceConsistentCasingInFileNames": true,
-		"declaration": true,
-		"baseUrl": "./src",
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true,
 		"rootDir": "./src",
-		"outDir": "./dist"
+		"noEmit": true
 	},
-	"include": ["src", "test.ts"]
+	"include": ["src"]
 }

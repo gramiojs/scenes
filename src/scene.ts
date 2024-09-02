@@ -12,18 +12,28 @@ import type {
 } from "gramio";
 import { Composer } from "gramio/dist/composer";
 import { noopNext } from "middleware-io";
+import type { Modify, StateTypesDefault } from "./types";
 import type { getInActiveSceneHandler } from "./utils";
 
 export type AnyScene = Scene<any, any, any>;
 
+export type SceneDerivesDefinitions<
+	Params,
+	State extends StateTypesDefault,
+> = DeriveDefinitions & {
+	global: {
+		scene: ReturnType<typeof getInActiveSceneHandler<Params, State>>;
+	};
+};
+
 export class Scene<
 	Params = never,
 	Errors extends ErrorDefinitions = {},
-	Derives extends DeriveDefinitions = DeriveDefinitions & {
-		global: {
-			scene: ReturnType<typeof getInActiveSceneHandler>;
-		};
-	},
+	State extends StateTypesDefault = {},
+	Derives extends SceneDerivesDefinitions<
+		Params,
+		State
+	> = SceneDerivesDefinitions<Params, State>,
 > {
 	/** @internal */
 	_ = {
@@ -44,11 +54,12 @@ export class Scene<
 			Errors,
 			Derives & {
 				global: {
-					scene: Derives["global"] extends { scene: any }
-						? Omit<Derives["global"]["scene"], "params"> & {
-								params: SceneParams;
-							}
-						: {};
+					scene: Modify<
+						Derives["global"]["scene"],
+						{
+							params: SceneParams;
+						}
+					>;
 				};
 			}
 		>;
@@ -61,6 +72,7 @@ export class Scene<
 	): Scene<
 		Params,
 		Errors & NewPlugin["_"]["Errors"],
+		// @ts-expect-error
 		Derives & NewPlugin["_"]["Derives"]
 	> {
 		return this;
@@ -97,18 +109,15 @@ export class Scene<
 				throw new Error("You must specify handler as the second argument");
 
 			return this.use(async (context, next) => {
-				// @ts-expect-error
 				if (context.is(updateName) && context.scene.step.id === stepId)
 					return handler(context, next);
-				// @ts-expect-error
+
 				if (context.scene.step.id > stepId) return await next();
 			});
 		}
 
 		return this.use(async (context, next) => {
-			// @ts-expect-error
 			if (context.scene.step.id === stepId) return updateName(context, next);
-			// @ts-expect-error
 			if (context.scene.step.id > stepId) return await next();
 		});
 	}

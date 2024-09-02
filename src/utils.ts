@@ -2,6 +2,7 @@ import type { Storage } from "@gramio/storage";
 import type { Bot, ContextType } from "gramio";
 import type { ScenesStorageData } from "./index";
 import type { AnyScene } from "./scene";
+import type { StateTypesDefault } from "./types";
 
 export function getSceneHandlers(
 	context: ContextType<Bot, "message" | "callback_query">,
@@ -42,7 +43,10 @@ export function getSceneHandlers(
 	};
 }
 
-export function getInActiveSceneHandler<Params>(
+export function getInActiveSceneHandler<
+	Params,
+	State extends StateTypesDefault,
+>(
 	context: ContextType<Bot, "message" | "callback_query">,
 	storage: Storage,
 	sceneData: ScenesStorageData,
