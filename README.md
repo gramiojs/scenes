@@ -30,6 +30,24 @@ const bot = new Bot(process.env.TOKEN as string)
     });
 ```
 
+### Share state between steps
+
+```ts
+const testScene = new Scene("test")
+    .step("message", (context) => {
+        if (context.scene.step.firstTime || context.text !== "1")
+            return context.send("1");
+
+        return context.scene.update({ messageId: context.id });
+    })
+    .step("message", (context) => {
+        if (context.scene.step.firstTime || context.text !== "2")
+            return context.send("2");
+
+        // context.session.state.messageId - number
+    });
+```
+
 ### Storage usage
 
 ```ts
