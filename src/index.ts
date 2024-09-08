@@ -1,18 +1,11 @@
 import { type Storage, inMemoryStorage } from "@gramio/storage";
 import { Plugin } from "gramio";
 import type { AnyScene } from "./scene";
+import type { ScenesOptions, ScenesStorageData } from "./types";
 import { getInActiveSceneHandler, getSceneHandlers } from "./utils";
 
-export interface ScenesOptions {
-	storage?: Storage;
-}
-
-export interface ScenesStorageData {
-	name: string;
-	params: unknown;
-	stepId: number;
-	firstTime: boolean;
-}
+export * from "./scene";
+export * from "./types";
 
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
@@ -20,7 +13,8 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	return new Plugin("@gramio/scenes")
 		.on(["message", "callback_query"], async (context, next) => {
 			const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-			const sceneData = await storage.get<ScenesStorageData>(key);
+			const sceneData =
+				await storage.get<ScenesStorageData<unknown, unknown>>(key);
 
 			if (!sceneData) return next();
 
@@ -31,12 +25,14 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			context.scene = getInActiveSceneHandler(
 				context,
 				storage,
+				// @ts-expect-error
 				sceneData,
 				scene,
 			);
 			// @ts-expect-error
 			return scene.compose(context, async () => {
-				const sceneData = await storage.get<ScenesStorageData>(key);
+				const sceneData =
+					await storage.get<ScenesStorageData<unknown, unknown>>(key);
 				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		})

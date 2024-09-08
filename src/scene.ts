@@ -11,11 +11,16 @@ import type {
 	UpdateName,
 } from "gramio";
 import { Composer } from "gramio/dist/composer";
-import { noopNext } from "middleware-io";
-import type { Modify, StateTypesDefault } from "./types";
+import { type NextMiddleware, noopNext } from "middleware-io";
+import type { Modify, StateTypesDefault, UpdateData } from "./types";
 import type { getInActiveSceneHandler } from "./utils";
 
-export type AnyScene = Scene<any, any, any>;
+export type AnyScene = Scene<any, any, any, any>;
+
+export type StepHandler<T, Return> = (
+	context: T,
+	next: NextMiddleware,
+) => MaybePromise<Return>;
 
 export type SceneDerivesDefinitions<
 	Params,
@@ -52,12 +57,31 @@ export class Scene<
 		return this as unknown as Scene<
 			SceneParams,
 			Errors,
+			State,
 			Derives & {
 				global: {
 					scene: Modify<
 						Derives["global"]["scene"],
 						{
 							params: SceneParams;
+						}
+					>;
+				};
+			}
+		>;
+	}
+
+	state<StateParams extends StateTypesDefault>() {
+		return this as unknown as Scene<
+			Params,
+			Errors,
+			StateParams,
+			Derives & {
+				global: {
+					scene: Modify<
+						Derives["global"]["scene"],
+						{
+							state: StateParams;
 						}
 					>;
 				};
@@ -72,6 +96,7 @@ export class Scene<
 	): Scene<
 		Params,
 		Errors & NewPlugin["_"]["Errors"],
+		State,
 		// @ts-expect-error
 		Derives & NewPlugin["_"]["Derives"]
 	> {
@@ -93,17 +118,34 @@ export class Scene<
 		return this;
 	}
 
-	step<T extends UpdateName>(
+	// @ts-expect-error
+	step<T extends UpdateName, Return>(
 		updateName: MaybeArray<T>,
-		handler: Handler<ContextType<Bot, T> & Derives["global"] & Derives[T]>,
-	): this;
+		handler: StepHandler<
+			ContextType<Bot, T> & Derives["global"] & Derives[T],
+			Return
+		>,
+	): Scene<
+		Params,
+		Errors,
+		Return extends UpdateData<infer Type> ? State & Type : State,
+		Derives & {
+			global: {
+				scene: Modify<
+					Derives["global"]["scene"],
+					{
+						state: Return extends UpdateData<infer Type> ? State & Type : State;
+					}
+				>;
+			};
+		}
+	>;
 	step(handler: Handler<Context<Bot> & Derives["global"]>): this;
 	step<T extends UpdateName>(
 		updateName: MaybeArray<T> | Handler<Context<Bot> & Derives["global"]>,
 		handler?: Handler<Context<Bot> & Derives["global"]>,
 	) {
 		const stepId = this.stepsCount++;
-		console.log(stepId);
 		if (Array.isArray(updateName) || typeof updateName === "string") {
 			if (!handler)
 				throw new Error("You must specify handler as the second argument");
