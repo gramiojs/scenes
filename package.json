@@ -37,7 +37,8 @@
 		"gramio": "^0.0.49",
 		"middleware-io": "^2.8.1",
 		"pkgroll": "^2.4.2",
-		"typescript": "^5.5.4"
+		"typescript": "^5.5.4",
+		"@gramio/storage-redis": "^0.0.2"
 	},
 	"peerDependencies": {
 		"gramio": ">=0.0.39 <1.0.0",
@@ -45,7 +46,6 @@
 	},
 	"files": ["dist"],
 	"dependencies": {
-		"@gramio/storage": "^0.0.3",
-		"@gramio/storage-redis": "^0.0.2"
+		"@gramio/storage": "^0.0.3"
 	}
 }
