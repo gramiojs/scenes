@@ -10,10 +10,10 @@ import type {
 	MaybePromise,
 	UpdateName,
 } from "gramio";
-import { Composer } from "gramio/dist/composer";
+import { Composer } from "gramio";
 import { type NextMiddleware, noopNext } from "middleware-io";
-import type { Modify, StateTypesDefault, UpdateData } from "./types";
-import type { getInActiveSceneHandler } from "./utils";
+import type { Modify, StateTypesDefault, UpdateData } from "./types.js";
+import type { getInActiveSceneHandler } from "./utils.js";
 
 export type AnyScene = Scene<any, any, any, any>;
 

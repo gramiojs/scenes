@@ -1,11 +1,11 @@
-import { type Storage, inMemoryStorage } from "@gramio/storage";
+import { inMemoryStorage } from "@gramio/storage";
 import { Plugin } from "gramio";
-import type { AnyScene } from "./scene";
-import type { ScenesOptions, ScenesStorageData } from "./types";
-import { getInActiveSceneHandler, getSceneHandlers } from "./utils";
+import type { AnyScene } from "./scene.js";
+import type { ScenesOptions, ScenesStorageData } from "./types.js";
+import { getInActiveSceneHandler, getSceneHandlers } from "./utils.js";
 
-export * from "./scene";
-export * from "./types";
+export * from "./scene.js";
+export * from "./types.js";
 
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();

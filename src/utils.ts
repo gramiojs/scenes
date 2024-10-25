@@ -1,8 +1,11 @@
 import type { Storage } from "@gramio/storage";
 import type { Bot, ContextType } from "gramio";
-import type { ScenesStorageData } from "./index";
-import type { AnyScene } from "./scene";
-import type { StateTypesDefault, UpdateData } from "./types";
+import type { AnyScene } from "./scene.js";
+import type {
+	ScenesStorageData,
+	StateTypesDefault,
+	UpdateData,
+} from "./types.js";
 
 export function getSceneHandlers(
 	context: ContextType<Bot, "message" | "callback_query">,
