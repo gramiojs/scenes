@@ -58,16 +58,19 @@ export class Scene<
 			SceneParams,
 			Errors,
 			State,
-			Derives & {
-				global: {
-					scene: Modify<
-						Derives["global"]["scene"],
-						{
-							params: SceneParams;
-						}
-					>;
-				};
-			}
+			Modify<
+				Derives,
+				{
+					global: {
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								params: SceneParams;
+							}
+						>;
+					};
+				}
+			>
 		>;
 	}
 
