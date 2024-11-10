@@ -1,6 +1,6 @@
 {
 	"name": "@gramio/scenes",
-	"version": "0.0.5",
+	"version": "0.1.0",
 	"description": "Scenes plugin for GramIO",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
