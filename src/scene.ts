@@ -17,10 +17,10 @@ import type { getInActiveSceneHandler } from "./utils.js";
 
 export type AnyScene = Scene<any, any, any, any>;
 
-export type StepHandler<T, Return> = (
+export type StepHandler<T, Return = any> = (
 	context: T,
 	next: NextMiddleware,
-) => MaybePromise<Return>;
+) => any;
 
 export type SceneDerivesDefinitions<
 	Params,
@@ -31,10 +31,14 @@ export type SceneDerivesDefinitions<
 	};
 };
 
+type ExtractUpdateData<T> = T extends UpdateData<infer U>
+	? UpdateData<U>
+	: never;
+
 export class Scene<
 	Params = never,
 	Errors extends ErrorDefinitions = {},
-	State extends StateTypesDefault = {},
+	State extends StateTypesDefault = Record<string, never>,
 	Derives extends SceneDerivesDefinitions<
 		Params,
 		State
@@ -122,26 +126,43 @@ export class Scene<
 	}
 
 	// @ts-expect-error
-	step<T extends UpdateName, Return>(
-		updateName: MaybeArray<T>,
-		handler: StepHandler<
+	step<
+		T extends UpdateName,
+		Handler extends StepHandler<
 			ContextType<Bot, T> & Derives["global"] & Derives[T],
-			Return
+			any
 		>,
+		Return = Awaited<ReturnType<Handler>>,
+	>(
+		updateName: MaybeArray<T>,
+		handler: Handler,
 	): Scene<
 		Params,
 		Errors,
-		Return extends UpdateData<infer Type> ? State & Type : State,
-		Derives & {
-			global: {
-				scene: Modify<
-					Derives["global"]["scene"],
-					{
-						state: Return extends UpdateData<infer Type> ? State & Type : State;
-					}
-				>;
-			};
-		}
+		Extract<Return, UpdateData<any>> extends UpdateData<infer Type>
+			? Record<string, never> extends State
+				? Type
+				: State & Type
+			: State,
+		Modify<
+			Derives,
+			{
+				global: {
+					scene: Modify<
+						Derives["global"]["scene"],
+						{
+							state: Extract<Return, UpdateData<any>> extends UpdateData<
+								infer Type
+							>
+								? Record<string, never> extends State
+									? Type
+									: State & Type
+								: State;
+						}
+					>;
+				};
+			}
+		>
 	>;
 	step(handler: Handler<Context<Bot> & Derives["global"]>): this;
 	step<T extends UpdateName>(
