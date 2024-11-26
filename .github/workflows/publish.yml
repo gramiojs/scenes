@@ -28,8 +28,8 @@ jobs:
             - name: Install modules
               run: bun install
 
-            # - name: Prepare to JSR publish
-            #   run: bun jsr
+            - name: Prepare to JSR publish
+              run: bun scripts/release-jsr.ts
 
             - name: Type-check
               run: tsc --noEmit
@@ -48,7 +48,6 @@ jobs:
             #       scope: "@gramio"
 
             - name: Publish package to NPM
-              if: ${{ github.event.inputs.publish_to_npm }}
               run: bun publish --access public
               env:
                   NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
