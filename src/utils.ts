@@ -67,12 +67,15 @@ export function getInActiveSceneHandler<
 		step: stepDerives,
 		update: async <T extends StateTypesDefault>(
 			state: T,
-			options: { step: number } = { step: sceneData.stepId + 1 },
+			options: { step: number; firstTime?: boolean } = {
+				step: sceneData.stepId + 1,
+			},
 		): Promise<UpdateData<T>> => {
 			sceneData.state = Object.assign(sceneData.state, state);
 			await storage.set(key, sceneData);
 
-			if (options?.step !== undefined) await stepDerives.go(options.step);
+			if (options?.step !== undefined)
+				await stepDerives.go(options.step, options.firstTime);
 			return {};
 		},
 		enter: async <Scene extends AnyScene>(
@@ -118,10 +121,10 @@ export function getStepDerives(
 ) {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
-	async function go(stepId: number) {
+	async function go(stepId: number, firstTime = true) {
 		storageData.previousStepId = storageData.stepId;
 		storageData.stepId = stepId;
-		storageData.firstTime = true;
+		storageData.firstTime = firstTime;
 		await storage.set(key, storageData);
 		//@ts-expect-error
 		context.scene = getInActiveSceneHandler(
