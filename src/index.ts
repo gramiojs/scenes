@@ -25,7 +25,6 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			context.scene = getInActiveSceneHandler(
 				context,
 				storage,
-				// @ts-expect-error
 				sceneData,
 				scene,
 			);
