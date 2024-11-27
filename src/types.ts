@@ -28,4 +28,10 @@ type Return = UpdateData<{ foo: string }> | { some: 2 };
 
 type Result = ExtractedReturn<Return, State>;
 
-const a = {} as Result;
+export interface SceneUpdateState {
+	/**
+	 * @default sceneData.stepId + 1
+	 */
+	step?: number;
+	firstTime?: boolean;
+}

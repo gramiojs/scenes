@@ -1,6 +1,6 @@
 {
 	"name": "@gramio/scenes",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Scenes plugin for GramIO",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
@@ -31,12 +31,12 @@
 	],
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
-		"@types/bun": "^1.1.12",
-		"gramio": "^0.1.1",
+		"@types/bun": "^1.1.14",
+		"gramio": "^0.1.2",
 		"middleware-io": "^2.8.1",
 		"pkgroll": "^2.5.1",
-		"typescript": "^5.6.3",
-		"@gramio/storage-redis": "^0.0.4"
+		"typescript": "^5.7.2",
+		"@gramio/storage-redis": "^1.0.0"
 	},
 	"peerDependencies": {
 		"gramio": ">=0.0.39 <1.0.0",
@@ -44,6 +44,6 @@
 	},
 	"files": ["dist"],
 	"dependencies": {
-		"@gramio/storage": "^0.0.3"
+		"@gramio/storage": "^1.0.0"
 	}
 }

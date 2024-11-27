@@ -2,6 +2,7 @@ import type { Storage } from "@gramio/storage";
 import type { Bot, ContextType } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
+	SceneUpdateState,
 	ScenesStorageData,
 	StateTypesDefault,
 	UpdateData,
@@ -67,7 +68,7 @@ export function getInActiveSceneHandler<
 		step: stepDerives,
 		update: async <T extends StateTypesDefault>(
 			state: T,
-			options: { step: number; firstTime?: boolean } = {
+			options: SceneUpdateState = {
 				step: sceneData.stepId + 1,
 			},
 		): Promise<UpdateData<T>> => {
@@ -76,7 +77,8 @@ export function getInActiveSceneHandler<
 
 			if (options?.step !== undefined)
 				await stepDerives.go(options.step, options.firstTime);
-			return {};
+
+			return state;
 		},
 		enter: async <Scene extends AnyScene>(
 			scene: Scene,
