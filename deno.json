@@ -9,5 +9,5 @@
 		"gramio": "jsr:@gramio/core@^0.1.3",
 		"middleware-io": "npm:middleware-io@^2.8.1"
 	},
-	"nodeModulesDir": "auto"
+	"nodeModulesDir": "manual"
 }
