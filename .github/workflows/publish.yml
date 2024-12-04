@@ -48,7 +48,7 @@ jobs:
 
             - name: Publish package to JSR
               if: ${{ github.event.inputs.publish_to_jsr }}
-              run: bunx jsr publish --allow-dirty --unstable-sloppy-imports --allow-slow-types
+              run: bunx jsr publish --allow-dirty --allow-slow-types
 
             - name: Publish package to NPM
               if: ${{ github.event.inputs.publish_to_npm }}
