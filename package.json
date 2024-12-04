@@ -1,6 +1,6 @@
 {
 	"name": "@gramio/scenes",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"description": "Scenes plugin for GramIO",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
@@ -17,7 +17,7 @@
 	},
 	"type": "module",
 	"homepage": "https://github.com/gramiojs/scenes",
-	"readme": "https://gramio.dev/plugins/official/scenes.html",
+	"readme": "https://gramio.dev/plugins/official/scenes",
 	"scripts": {
 		"prepublishOnly": "bunx pkgroll",
 		"generate": "bun scripts/generate.ts"

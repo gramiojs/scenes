@@ -43,9 +43,7 @@ export function getSceneHandlers(
 				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		},
-		exit: () => {
-			storage.delete(key);
-		},
+		exit: () => storage.delete(key),
 	};
 }
 
@@ -109,9 +107,7 @@ export function getInActiveSceneHandler<
 				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		},
-		exit: () => {
-			storage.delete(key);
-		},
+		exit: () => storage.delete(key),
 	};
 }
 
