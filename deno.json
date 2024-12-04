@@ -6,7 +6,7 @@
 		"include": ["deno.json", "src", "README.md", "LICENSE"]
 	},
 	"imports": {
-		"gramio": "jsr:@gramio/core@^0.1.1",
+		"gramio": "jsr:@gramio/core@^0.1.3",
 		"middleware-io": "npm:middleware-io@^2.8.1"
 	}
 }
