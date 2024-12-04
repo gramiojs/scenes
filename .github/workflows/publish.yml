@@ -1,6 +1,18 @@
 name: Publish package
 
-on: workflow_dispatch
+on:
+    workflow_dispatch:
+        inputs:
+            publish_to_npm:
+                description: "Publish package to NPM"
+                required: false
+                type: boolean
+                default: true
+            publish_to_jsr:
+                description: "Publish package to JSR"
+                required: false
+                type: boolean
+                default: true
 
 permissions:
     contents: write
@@ -34,20 +46,12 @@ jobs:
             - name: Type-check
               run: tsc --noEmit
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v1
-
             - name: Publish package to JSR
-              run: deno publish --allow-dirty --unstable-sloppy-imports --allow-slow-types
-
-            # - name: Install Node
-            #   uses: actions/setup-node@v4
-            #   with:
-            #       node-version: "20.x"
-            #       registry-url: "https://registry.npmjs.org"
-            #       scope: "@gramio"
+              if: ${{ github.event.inputs.publish_to_jsr }}
+              run: bunx jsr publish --allow-dirty --unstable-sloppy-imports --allow-slow-types
 
             - name: Publish package to NPM
+              if: ${{ github.event.inputs.publish_to_npm }}
               run: bun publish --access public
               env:
                   NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
