@@ -7,6 +7,19 @@ import { getInActiveSceneHandler, getSceneHandlers } from "./utils.js";
 export * from "./scene.js";
 export * from "./types.js";
 
+export function scenesDerives(options?: ScenesOptions) {
+	const storage = options?.storage ?? inMemoryStorage();
+
+	return new Plugin("@gramio/scenes:derives").derive(
+		["message", "callback_query"],
+		(context) => {
+			return {
+				scene: getSceneHandlers(context, storage),
+			};
+		},
+	);
+}
+
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
 
