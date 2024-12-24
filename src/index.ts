@@ -62,7 +62,9 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 		.on(["message", "callback_query"], async (context, next) => {
 			const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 			const sceneData =
-				await storage.get<ScenesStorageData<unknown, unknown>>(key);
+				// @ts-expect-error PRIVATE KEY USAGE
+				context.scene["~"]?.data ??
+				(await storage.get<ScenesStorageData<unknown, unknown>>(key));
 
 			if (!sceneData) return next();
 
@@ -78,6 +80,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			);
 			// @ts-expect-error
 			return scene.compose(context, async () => {
+				// Can we avoid this useless read?
 				const sceneData =
 					await storage.get<ScenesStorageData<unknown, unknown>>(key);
 				await storage.set(key, { ...sceneData, firstTime: false });

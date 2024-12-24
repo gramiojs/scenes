@@ -183,5 +183,9 @@ export function getPossibleInSceneHandlers<
 		current: getInUnknownScene(context, storage, sceneData, scene),
 		enter: getSceneEnter(context, storage, key),
 		exit: () => storage.delete(key),
+		// @ts-expect-error PRIVATE KEY
+		"~": {
+			data: sceneData,
+		},
 	};
 }
