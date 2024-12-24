@@ -1,10 +1,12 @@
 import type { Storage } from "@gramio/storage";
+import type { MaybePromise } from "gramio";
+import type { AnyScene } from "./scene.js";
 
 export type Modify<Base, Mod> = Omit<Base, keyof Mod> & Mod;
 
 export type StateTypesDefault = Record<string | number, any>;
 
-export type UpdateData<T extends StateTypesDefault> = {};
+export type UpdateData = {};
 
 export interface ScenesOptions {
 	storage?: Storage;
@@ -26,12 +28,46 @@ type ExtractedReturn<Return, State> = Return extends UpdateData<infer Type>
 type State = { bar: number };
 type Return = UpdateData<{ foo: string }> | { some: 2 };
 
-type Result = ExtractedReturn<Return, State>;
-
 export interface SceneUpdateState {
 	/**
 	 * @default sceneData.stepId + 1
 	 */
 	step?: number;
 	firstTime?: boolean;
+}
+
+export interface EnterExit {
+	enter: <Scene extends AnyScene>(
+		scene: Scene,
+		...args: Scene["_"]["params"] extends never
+			? []
+			: [params: Scene["_"]["params"]]
+	) => Promise<void>;
+	exit: () => MaybePromise<boolean>;
+}
+
+export type SceneStepReturn = {
+	id: number;
+	previousId: number;
+	// TODO: isFirstTime ??
+	firstTime: boolean;
+
+	go: (stepId: number, firstTime?: boolean) => Promise<void>;
+
+	next: () => Promise<void>;
+	previous: () => Promise<void>;
+};
+
+export interface InActiveSceneHandlerReturn<
+	Params,
+	State extends StateTypesDefault,
+> extends EnterExit {
+	state: State;
+	params: Params;
+	update: <T extends StateTypesDefault>(
+		state: T,
+		options: SceneUpdateState,
+	) => Promise<UpdateData<T>>;
+
+	step: SceneStepReturn;
 }

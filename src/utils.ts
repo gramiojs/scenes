@@ -2,25 +2,22 @@ import type { Storage } from "@gramio/storage";
 import type { Bot, ContextType } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
-	SceneUpdateState,
+	EnterExit,
+	InActiveSceneHandlerReturn,
+	SceneStepReturn,
 	ScenesStorageData,
 	StateTypesDefault,
-	UpdateData,
 } from "./types.js";
 
 export function getSceneHandlers(
 	context: ContextType<Bot, "message" | "callback_query">,
 	storage: Storage,
-) {
+	withCurrentScene = false,
+): EnterExit {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
 	return {
-		enter: async <Scene extends AnyScene>(
-			scene: Scene,
-			...args: Scene["_"]["params"] extends never
-				? []
-				: [params: Scene["_"]["params"]]
-		) => {
+		enter: async (scene, ...args) => {
 			const sceneParams: ScenesStorageData<any, any> = {
 				name: scene.name,
 				state: {},
@@ -55,7 +52,7 @@ export function getInActiveSceneHandler<
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-) {
+): InActiveSceneHandlerReturn<Params, State> {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
 	const stepDerives = getStepDerives(context, storage, sceneData, scene);
@@ -64,12 +61,12 @@ export function getInActiveSceneHandler<
 		state: sceneData.state,
 		params: sceneData.params,
 		step: stepDerives,
-		update: async <T extends StateTypesDefault>(
-			state: T,
-			options: SceneUpdateState = {
+		update: async (
+			state,
+			options = {
 				step: sceneData.stepId + 1,
 			},
-		): Promise<UpdateData<T>> => {
+		) => {
 			sceneData.state = Object.assign(sceneData.state, state);
 			await storage.set(key, sceneData);
 
@@ -78,12 +75,7 @@ export function getInActiveSceneHandler<
 
 			return state;
 		},
-		enter: async <Scene extends AnyScene>(
-			scene: Scene,
-			...args: Scene["_"]["params"] extends never
-				? []
-				: [params: Scene["_"]["params"]]
-		) => {
+		enter: async (scene, ...args) => {
 			const sceneParams: ScenesStorageData<Params, State> = {
 				name: scene.name,
 				state: {} as State,
@@ -116,7 +108,7 @@ export function getStepDerives(
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
-) {
+): SceneStepReturn {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
 	async function go(stepId: number, firstTime = true) {
