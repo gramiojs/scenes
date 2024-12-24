@@ -45,8 +45,9 @@ export class Scene<
 	> = SceneDerivesDefinitions<Params, State>,
 > {
 	/** @internal */
-	_ = {
+	"~" = {
 		params: {} as Params,
+		state: {} as State,
 		composer: new Composer(),
 	};
 
@@ -114,13 +115,13 @@ export class Scene<
 		updateName: MaybeArray<T>,
 		handler: Handler<ContextType<Bot, T> & Derives["global"] & Derives[T]>,
 	) {
-		this._.composer.on(updateName, handler);
+		this["~"].composer.on(updateName, handler);
 
 		return this;
 	}
 
 	use(handler: Handler<Context<Bot> & Derives["global"]>) {
-		this._.composer.use(handler);
+		this["~"].composer.use(handler);
 
 		return this;
 	}
@@ -194,7 +195,7 @@ export class Scene<
 		},
 		onNext?: () => unknown,
 	) {
-		await this._.composer.composed(context, noopNext);
+		await this["~"].composer.composed(context, noopNext);
 		onNext?.();
 	}
 }

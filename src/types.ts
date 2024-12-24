@@ -38,9 +38,9 @@ export interface SceneUpdateState {
 
 export type SceneEnterHandler<Scene extends AnyScene = AnyScene> = (
 	scene: Scene,
-	...args: Scene["_"]["params"] extends never
+	...args: Scene["~"]["params"] extends never
 		? []
-		: [params: Scene["_"]["params"]]
+		: [params: Scene["~"]["params"]]
 ) => Promise<void>;
 
 export interface EnterExit {
