@@ -163,7 +163,7 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	return {
 		...getInActiveSceneHandler(context, storage, sceneData, scene),
 		// @ts-expect-error
-		is: (scene) => false,
+		is: (scene) => scene.name === sceneData.name,
 	};
 }
 

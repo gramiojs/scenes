@@ -21,9 +21,20 @@ interface ScenesDerivesOptions<WithCurrentScene extends boolean = false>
 }
 
 export function scenesDerives<WithCurrentScene extends boolean = false>(
-	options?: ScenesDerivesOptions<WithCurrentScene>,
+	scenesOrOptions: AnyScene[] | ScenesDerivesOptions<WithCurrentScene>,
+	optionsRaw?: ScenesDerivesOptions<WithCurrentScene>,
 ) {
+	const options = Array.isArray(scenesOrOptions) ? optionsRaw : scenesOrOptions;
+
 	const storage = options?.storage ?? inMemoryStorage();
+	const scenes = Array.isArray(scenesOrOptions)
+		? scenesOrOptions
+		: options?.scenes;
+
+	const withCurrentScene = options?.withCurrentScene ?? false;
+
+	if (withCurrentScene && !scenes?.length)
+		throw new Error("scenes is required when withCurrentScene is true");
 
 	return new Plugin("@gramio/scenes:derives").derive(
 		// TODO: support more
@@ -33,8 +44,8 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 				scene: (await getSceneHandlers(
 					context,
 					storage,
-					options?.withCurrentScene ?? false,
-					options?.scenes ?? [],
+					withCurrentScene,
+					scenes ?? [],
 				)) as WithCurrentScene extends true
 					? PossibleInUnknownScene<any, any>
 					: EnterExit,
@@ -72,9 +83,9 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				await storage.set(key, { ...sceneData, firstTime: false });
 			});
 		})
-		.derive(["message", "callback_query"], (context) => {
+		.derive(["message", "callback_query"], async (context) => {
 			return {
-				scene: getSceneHandlers(context, storage),
+				scene: await getSceneHandlers(context, storage, false, scenes),
 			};
 		});
 }
