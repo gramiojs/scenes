@@ -32,20 +32,17 @@
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
 		"@types/bun": "^1.1.14",
-		"gramio": "^0.1.5",
+		"gramio": "^0.2.0",
 		"middleware-io": "^2.8.1",
-		"pkgroll": "^2.5.1",
+		"pkgroll": "^2.6.0",
 		"typescript": "^5.7.2",
-		"@gramio/storage-redis": "^1.0.1"
+		"@gramio/storage-redis": "^1.0.2"
 	},
 	"peerDependencies": {
 		"gramio": ">=0.0.39 <1.0.0",
 		"middleware-io": "^2.8.1"
 	},
 	"files": ["dist"],
-	"overrides": {
-		"@gramio/types": "^8.1.0"
-	},
 	"dependencies": {
 		"@gramio/storage": "^1.0.0"
 	}
