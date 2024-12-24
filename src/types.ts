@@ -6,13 +6,13 @@ export type Modify<Base, Mod> = Omit<Base, keyof Mod> & Mod;
 
 export type StateTypesDefault = Record<string | number, any>;
 
-export type UpdateData = {};
+export type UpdateData<T extends StateTypesDefault> = {};
 
 export interface ScenesOptions {
 	storage?: Storage;
 }
 
-export interface ScenesStorageData<Params, State> {
+export interface ScenesStorageData<Params = any, State = any> {
 	name: string;
 	params: Params;
 	state: State;
@@ -21,12 +21,12 @@ export interface ScenesStorageData<Params, State> {
 	firstTime: boolean;
 }
 
-type ExtractedReturn<Return, State> = Return extends UpdateData<infer Type>
-	? State & Type
-	: State;
+// type ExtractedReturn<Return, State> = Return extends UpdateData<infer Type>
+// 	? State & Type
+// 	: State;
 
-type State = { bar: number };
-type Return = UpdateData<{ foo: string }> | { some: 2 };
+// type State = { bar: number };
+// type Return = UpdateData<{ foo: string }> | { some: 2 };
 
 export interface SceneUpdateState {
 	/**
@@ -36,13 +36,15 @@ export interface SceneUpdateState {
 	firstTime?: boolean;
 }
 
+export type SceneEnterHandler<Scene extends AnyScene = AnyScene> = (
+	scene: Scene,
+	...args: Scene["_"]["params"] extends never
+		? []
+		: [params: Scene["_"]["params"]]
+) => Promise<void>;
+
 export interface EnterExit {
-	enter: <Scene extends AnyScene>(
-		scene: Scene,
-		...args: Scene["_"]["params"] extends never
-			? []
-			: [params: Scene["_"]["params"]]
-	) => Promise<void>;
+	enter: SceneEnterHandler;
 	exit: () => MaybePromise<boolean>;
 }
 

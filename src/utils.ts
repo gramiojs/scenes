@@ -4,10 +4,41 @@ import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
 	InActiveSceneHandlerReturn,
+	SceneEnterHandler,
 	SceneStepReturn,
 	ScenesStorageData,
 	StateTypesDefault,
 } from "./types.js";
+
+function getSceneEnter(
+	context: ContextType<Bot, "message" | "callback_query">,
+	storage: Storage,
+	key: string,
+): SceneEnterHandler {
+	return async (scene, ...args) => {
+		const sceneParams: ScenesStorageData = {
+			name: scene.name,
+			state: {},
+			params: args[0],
+			stepId: 0,
+			previousStepId: 0,
+			firstTime: true,
+		};
+		await storage.set(key, sceneParams);
+		// @ts-expect-error
+		context.scene = getInActiveSceneHandler(
+			context,
+			storage,
+			sceneParams,
+			scene,
+		);
+		// @ts-expect-error
+		await scene.compose(context, async () => {
+			const sceneData = await storage.get<ScenesStorageData>(key);
+			await storage.set(key, { ...sceneData, firstTime: false });
+		});
+	};
+}
 
 export function getSceneHandlers(
 	context: ContextType<Bot, "message" | "callback_query">,
@@ -17,29 +48,7 @@ export function getSceneHandlers(
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
 	return {
-		enter: async (scene, ...args) => {
-			const sceneParams: ScenesStorageData<any, any> = {
-				name: scene.name,
-				state: {},
-				params: args[0] as any,
-				stepId: 0,
-				previousStepId: 0,
-				firstTime: true,
-			};
-			await storage.set(key, sceneParams);
-			// @ts-expect-error
-			context.scene = getInActiveSceneHandler(
-				context,
-				storage,
-				sceneParams,
-				scene,
-			);
-			// @ts-expect-error
-			await scene.compose(context, async () => {
-				const sceneData = await storage.get<ScenesStorageData<any, any>>(key);
-				await storage.set(key, { ...sceneData, firstTime: false });
-			});
-		},
+		enter: getSceneEnter(context, storage, key),
 		exit: () => storage.delete(key),
 	};
 }
@@ -75,30 +84,7 @@ export function getInActiveSceneHandler<
 
 			return state;
 		},
-		enter: async (scene, ...args) => {
-			const sceneParams: ScenesStorageData<Params, State> = {
-				name: scene.name,
-				state: {} as State,
-				params: args[0] as any,
-				stepId: 0,
-				previousStepId: 0,
-				firstTime: true,
-			};
-			await storage.set(key, sceneParams);
-			// @ts-expect-error
-			context.scene = getInActiveSceneHandler(
-				context,
-				storage,
-				sceneParams,
-				scene,
-			);
-			// @ts-expect-error
-			await scene.compose(context, async () => {
-				const sceneData =
-					await storage.get<ScenesStorageData<Params, State>>(key);
-				await storage.set(key, { ...sceneData, firstTime: false });
-			});
-		},
+		enter: getSceneEnter(context, storage, key),
 		exit: () => storage.delete(key),
 	};
 }

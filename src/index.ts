@@ -7,14 +7,22 @@ import { getInActiveSceneHandler, getSceneHandlers } from "./utils.js";
 export * from "./scene.js";
 export * from "./types.js";
 
-export function scenesDerives(options?: ScenesOptions) {
+interface ScenesDerivesOptions<WithCurrentScene extends boolean = false>
+	extends ScenesOptions {
+	withCurrentScene?: WithCurrentScene;
+}
+
+export function scenesDerives<WithCurrentScene extends boolean = false>(
+	options?: ScenesDerivesOptions<WithCurrentScene>,
+) {
 	const storage = options?.storage ?? inMemoryStorage();
 
 	return new Plugin("@gramio/scenes:derives").derive(
+		// TODO: support more
 		["message", "callback_query"],
 		(context) => {
 			return {
-				scene: getSceneHandlers(context, storage),
+				scene: getSceneHandlers(context, storage, options?.withCurrentScene),
 			};
 		},
 	);
@@ -23,6 +31,7 @@ export function scenesDerives(options?: ScenesOptions) {
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
 
+	// TODO: optimize storage usage
 	return new Plugin("@gramio/scenes")
 		.on(["message", "callback_query"], async (context, next) => {
 			const key = `@gramio/scenes:${context.from?.id ?? 0}`;
