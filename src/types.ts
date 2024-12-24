@@ -68,7 +68,7 @@ export interface InActiveSceneHandlerReturn<
 	params: Params;
 	update: <T extends StateTypesDefault>(
 		state: T,
-		options: SceneUpdateState,
+		options?: SceneUpdateState,
 	) => Promise<UpdateData<T>>;
 
 	step: SceneStepReturn;
