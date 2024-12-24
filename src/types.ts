@@ -72,6 +72,8 @@ export interface InActiveSceneHandlerReturn<
 	) => Promise<UpdateData<T>>;
 
 	step: SceneStepReturn;
+
+	reenter: () => Promise<void>;
 }
 
 export interface InUnknownScene<

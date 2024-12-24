@@ -113,6 +113,8 @@ export function getInActiveSceneHandler<
 		},
 		enter: getSceneEnter(context, storage, key),
 		exit: () => storage.delete(key),
+		reenter: async () =>
+			getSceneEnter(context, storage, key)(scene, sceneData.params),
 	};
 }
 
