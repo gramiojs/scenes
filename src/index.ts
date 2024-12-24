@@ -1,7 +1,12 @@
 import { inMemoryStorage } from "@gramio/storage";
 import { Plugin } from "gramio";
 import type { AnyScene } from "./scene.js";
-import type { ScenesOptions, ScenesStorageData } from "./types.js";
+import type {
+	EnterExit,
+	PossibleInUnknownScene,
+	ScenesOptions,
+	ScenesStorageData,
+} from "./types.js";
 import { getInActiveSceneHandler, getSceneHandlers } from "./utils.js";
 
 export * from "./scene.js";
@@ -10,6 +15,9 @@ export * from "./types.js";
 interface ScenesDerivesOptions<WithCurrentScene extends boolean = false>
 	extends ScenesOptions {
 	withCurrentScene?: WithCurrentScene;
+
+	// TODO: improve typings. withCurrentScene & scenes should be declared at the same time
+	scenes?: AnyScene[];
 }
 
 export function scenesDerives<WithCurrentScene extends boolean = false>(
@@ -20,9 +28,16 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 	return new Plugin("@gramio/scenes:derives").derive(
 		// TODO: support more
 		["message", "callback_query"],
-		(context) => {
+		async (context) => {
 			return {
-				scene: getSceneHandlers(context, storage, options?.withCurrentScene),
+				scene: (await getSceneHandlers(
+					context,
+					storage,
+					options?.withCurrentScene ?? false,
+					options?.scenes ?? [],
+				)) as WithCurrentScene extends true
+					? PossibleInUnknownScene<any, any>
+					: EnterExit,
 			};
 		},
 	);

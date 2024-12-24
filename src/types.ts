@@ -73,3 +73,28 @@ export interface InActiveSceneHandlerReturn<
 
 	step: SceneStepReturn;
 }
+
+export interface InUnknownScene<
+	Params,
+	State extends StateTypesDefault,
+	GlobalScene extends AnyScene | null = null,
+> extends InActiveSceneHandlerReturn<Params, State> {
+	is<Scene extends AnyScene>(
+		scene: Scene,
+	): this is InUnknownScene<Scene["~"]["params"], Scene["~"]["state"], Scene>;
+}
+
+export interface PossibleInUnknownScene<
+	Params,
+	State extends StateTypesDefault,
+	Scene extends AnyScene | null = null,
+> extends EnterExit {
+	// TODO: currently higher is doesn't provide types here. this ternary is useless
+	// but we should fix it somehow
+	current: Scene extends AnyScene
+		? InActiveSceneHandlerReturn<
+				Scene["~"]["params"],
+				Partial<Scene["~"]["state"]>
+			>
+		: InUnknownScene<Params, State, Scene> | undefined;
+}

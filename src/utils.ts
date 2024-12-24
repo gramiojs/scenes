@@ -4,6 +4,8 @@ import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
 	InActiveSceneHandlerReturn,
+	InUnknownScene,
+	PossibleInUnknownScene,
 	SceneEnterHandler,
 	SceneStepReturn,
 	ScenesStorageData,
@@ -40,17 +42,42 @@ function getSceneEnter(
 	};
 }
 
-export function getSceneHandlers(
+// function isTrue(value: unknown): value is true {
+// 	return value === true;
+// }
+
+export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	context: ContextType<Bot, "message" | "callback_query">,
 	storage: Storage,
-	withCurrentScene = false,
-): EnterExit {
+	withCurrentScene: WithCurrentScene,
+	scenes: AnyScene[],
+): Promise<
+	WithCurrentScene extends true ? PossibleInUnknownScene<any, any> : EnterExit
+> {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
-	return {
+	const enterExit = {
 		enter: getSceneEnter(context, storage, key),
 		exit: () => storage.delete(key),
 	};
+
+	if (withCurrentScene) {
+		const sceneData =
+			await storage.get<ScenesStorageData<unknown, unknown>>(key);
+
+		// TODO: fix type issues. predicates are not smart for now
+		// @ts-expect-error
+		if (!sceneData) return enterExit;
+
+		const scene = scenes.find((x) => x.name === sceneData.name);
+		// @ts-expect-error
+		if (!scene) return enterExit;
+
+		return getPossibleInSceneHandlers(context, storage, sceneData, scene, key);
+	}
+
+	// @ts-expect-error
+	return enterExit;
 }
 
 export function getInActiveSceneHandler<
@@ -124,5 +151,35 @@ export function getStepDerives(
 		go: go,
 		next: () => go(storageData.stepId + 1),
 		previous: () => go(storageData.stepId - 1),
+	};
+}
+
+export function getInUnknownScene<Params, State extends StateTypesDefault>(
+	context: ContextType<Bot, "message" | "callback_query">,
+	storage: Storage,
+	sceneData: ScenesStorageData<Params, State>,
+	scene: AnyScene,
+): InUnknownScene<Params, State> {
+	return {
+		...getInActiveSceneHandler(context, storage, sceneData, scene),
+		// @ts-expect-error
+		is: (scene) => false,
+	};
+}
+
+export function getPossibleInSceneHandlers<
+	Params,
+	State extends StateTypesDefault,
+>(
+	context: ContextType<Bot, "message" | "callback_query">,
+	storage: Storage,
+	sceneData: ScenesStorageData<Params, State>,
+	scene: AnyScene,
+	key: string,
+): PossibleInUnknownScene<Params, State> {
+	return {
+		current: getInUnknownScene(context, storage, sceneData, scene),
+		enter: getSceneEnter(context, storage, key),
+		exit: () => storage.delete(key),
 	};
 }
