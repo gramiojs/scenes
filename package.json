@@ -1,6 +1,6 @@
 {
 	"name": "@gramio/scenes",
-	"version": "0.1.4",
+	"version": "0.2.0",
 	"description": "Scenes plugin for GramIO",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
@@ -27,7 +27,9 @@
 		"gramio-plugin",
 		"telegram-bot-api",
 		"telegram-bot",
-		"scenes"
+		"scenes",
+		"conversation",
+		"dialog"
 	],
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
