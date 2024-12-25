@@ -81,6 +81,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				storage,
 				sceneData,
 				scene,
+				key,
 			);
 			// @ts-expect-error
 			return scene.run(context, storage, key, sceneData);

@@ -33,6 +33,7 @@ export function getSceneEnter(
 			storage,
 			sceneParams,
 			scene,
+			key,
 		);
 		// @ts-expect-error
 		await scene.compose(context, async () => {
@@ -88,9 +89,8 @@ export function getInActiveSceneHandler<
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
+	key: string,
 ): InActiveSceneHandlerReturn<Params, State> {
-	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-
 	const stepDerives = getStepDerives(context, storage, sceneData, scene);
 
 	return {
@@ -104,12 +104,12 @@ export function getInActiveSceneHandler<
 			},
 		) => {
 			sceneData.state = Object.assign(sceneData.state, state);
-			await storage.set(key, sceneData);
 
 			// sceneData.stepId.
 
 			if (options?.step !== undefined)
 				await stepDerives.go(options.step, options.firstTime);
+			else await storage.set(key, sceneData);
 
 			return state;
 		},
@@ -140,6 +140,7 @@ export function getStepDerives(
 			storage,
 			storageData,
 			scene,
+			key,
 		);
 		// @ts-expect-error
 		await scene.run(context, storage, key, storageData);
@@ -160,9 +161,10 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
+	key: string,
 ): InUnknownScene<Params, State> {
 	return {
-		...getInActiveSceneHandler(context, storage, sceneData, scene),
+		...getInActiveSceneHandler(context, storage, sceneData, scene, key),
 		// @ts-expect-error
 		is: (scene) => scene.name === sceneData.name,
 	};
@@ -179,7 +181,7 @@ export function getPossibleInSceneHandlers<
 	key: string,
 ): PossibleInUnknownScene<Params, State> {
 	return {
-		current: getInUnknownScene(context, storage, sceneData, scene),
+		current: getInUnknownScene(context, storage, sceneData, scene, key),
 		enter: getSceneEnter(context, storage, key),
 		exit: () => storage.delete(key),
 		// @ts-expect-error PRIVATE KEY
