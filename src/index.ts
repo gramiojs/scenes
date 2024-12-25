@@ -40,6 +40,10 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 		// TODO: support more
 		["message", "callback_query"],
 		async (context) => {
+			if (withCurrentScene) {
+				// TODO: move getSceneHandlers.withCurrentScene here and avoid useless async next
+			}
+
 			return {
 				scene: (await getSceneHandlers(
 					context,
@@ -79,12 +83,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				scene,
 			);
 			// @ts-expect-error
-			return scene.compose(context, async () => {
-				// Can we avoid this useless read?
-				const sceneData =
-					await storage.get<ScenesStorageData<unknown, unknown>>(key);
-				await storage.set(key, { ...sceneData, firstTime: false });
-			});
+			return scene.run(context, storage, key, sceneData);
 		})
 		.derive(["message", "callback_query"], async (context) => {
 			return {

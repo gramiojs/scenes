@@ -12,7 +12,7 @@ import type {
 	StateTypesDefault,
 } from "./types.js";
 
-function getSceneEnter(
+export function getSceneEnter(
 	context: ContextType<Bot, "message" | "callback_query">,
 	storage: Storage,
 	key: string,
@@ -106,6 +106,8 @@ export function getInActiveSceneHandler<
 			sceneData.state = Object.assign(sceneData.state, state);
 			await storage.set(key, sceneData);
 
+			// sceneData.stepId.
+
 			if (options?.step !== undefined)
 				await stepDerives.go(options.step, options.firstTime);
 
@@ -130,6 +132,7 @@ export function getStepDerives(
 		storageData.previousStepId = storageData.stepId;
 		storageData.stepId = stepId;
 		storageData.firstTime = firstTime;
+		// console.log("Oh we go to step", stepId);
 		await storage.set(key, storageData);
 		//@ts-expect-error
 		context.scene = getInActiveSceneHandler(
@@ -139,11 +142,7 @@ export function getStepDerives(
 			scene,
 		);
 		// @ts-expect-error
-		await scene.compose(context, async () => {
-			const sceneData =
-				await storage.get<ScenesStorageData<unknown, unknown>>(key);
-			await storage.set(key, { ...sceneData, firstTime: false });
-		});
+		await scene.run(context, storage, key, storageData);
 	}
 
 	return {

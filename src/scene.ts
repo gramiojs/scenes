@@ -1,3 +1,4 @@
+import type { Storage } from "@gramio/storage";
 import type {
 	AnyPlugin,
 	Bot,
@@ -12,7 +13,12 @@ import type {
 } from "gramio";
 import { Composer } from "gramio";
 import { type NextMiddleware, noopNext } from "middleware-io";
-import type { Modify, StateTypesDefault, UpdateData } from "./types.js";
+import type {
+	Modify,
+	ScenesStorageData,
+	StateTypesDefault,
+	UpdateData,
+} from "./types.js";
 import type { getInActiveSceneHandler } from "./utils.js";
 
 export type AnyScene = Scene<any, any, any, any>;
@@ -197,5 +203,20 @@ export class Scene<
 	) {
 		await this["~"].composer.composed(context, noopNext);
 		onNext?.();
+	}
+
+	async run(
+		context: Context<Bot> & {
+			[key: string]: unknown;
+		},
+		storage: Storage,
+		key: string,
+		data: ScenesStorageData<unknown, unknown>,
+	) {
+		return this.compose(context, async () => {
+			// TODO: We should know is state edited or not?
+
+			if (data.firstTime) await storage.set(key, { ...data, firstTime: false });
+		});
 	}
 }
