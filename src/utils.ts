@@ -106,6 +106,7 @@ export function getInActiveSceneHandler<
 			sceneData.state = Object.assign(sceneData.state, state);
 
 			// sceneData.stepId.
+			// console.log("UPDATE", sceneData.state);
 
 			if (options?.step !== undefined)
 				await stepDerives.go(options.step, options.firstTime);
@@ -133,7 +134,7 @@ export function getStepDerives(
 		storageData.stepId = stepId;
 		storageData.firstTime = firstTime;
 		// console.log("Oh we go to step", stepId);
-		await storage.set(key, storageData);
+		// await storage.set(key, storageData);
 		//@ts-expect-error
 		context.scene = getInActiveSceneHandler(
 			context,
