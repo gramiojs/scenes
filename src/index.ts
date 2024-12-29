@@ -37,8 +37,38 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 		throw new Error("scenes is required when withCurrentScene is true");
 
 	return new Plugin("@gramio/scenes:derives").derive(
-		// TODO: support more
-		["message", "callback_query"],
+		// TODO: move it to separate array. but for now it casted to just string[] or readonly array (derive won't work with readonly)
+		[
+			"message",
+			"callback_query",
+			"channel_post",
+			"chat_join_request",
+			"chosen_inline_result",
+			"inline_query",
+			"web_app_data",
+			"successful_payment",
+			"video_chat_started",
+			"video_chat_ended",
+			"video_chat_scheduled",
+			"video_chat_participants_invited",
+			"passport_data",
+			"new_chat_title",
+			"new_chat_photo",
+			"pinned_message",
+			// "poll_answer",
+			"pre_checkout_query",
+			"proximity_alert_triggered",
+			"shipping_query",
+			"group_chat_created",
+			"delete_chat_photo",
+			"location",
+			"invoice",
+			"message_auto_delete_timer_changed",
+			"migrate_from_chat_id",
+			"migrate_to_chat_id",
+			"new_chat_members",
+			"chat_shared",
+		],
 		async (context) => {
 			if (withCurrentScene) {
 				// TODO: move getSceneHandlers.withCurrentScene here and avoid useless async next
@@ -63,31 +93,64 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 
 	// TODO: optimize storage usage
 	return new Plugin("@gramio/scenes")
-		.on(["message", "callback_query"], async (context, next) => {
-			const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-			const sceneData =
-				// @ts-expect-error PRIVATE KEY USAGE
-				"scene" in context && "~" in context.scene
-					? // @ts-expect-error PRIVATE KEY USAGE
-						context.scene["~"]?.data
-					: await storage.get<ScenesStorageData<unknown, unknown>>(key);
+		.on(
+			[
+				"message",
+				"callback_query",
+				"channel_post",
+				"chat_join_request",
+				"chosen_inline_result",
+				"inline_query",
+				"web_app_data",
+				"successful_payment",
+				"video_chat_started",
+				"video_chat_ended",
+				"video_chat_scheduled",
+				"video_chat_participants_invited",
+				"passport_data",
+				"new_chat_title",
+				"new_chat_photo",
+				"pinned_message",
+				// "poll_answer",
+				"pre_checkout_query",
+				"proximity_alert_triggered",
+				"shipping_query",
+				"group_chat_created",
+				"delete_chat_photo",
+				"location",
+				"invoice",
+				"message_auto_delete_timer_changed",
+				"migrate_from_chat_id",
+				"migrate_to_chat_id",
+				"new_chat_members",
+				"chat_shared",
+			],
+			async (context, next) => {
+				const key = `@gramio/scenes:${context.from?.id ?? 0}`;
+				const sceneData =
+					// @ts-expect-error PRIVATE KEY USAGE
+					"scene" in context && "~" in context.scene
+						? // @ts-expect-error PRIVATE KEY USAGE
+							context.scene["~"]?.data
+						: await storage.get<ScenesStorageData<unknown, unknown>>(key);
 
-			if (!sceneData) return next();
+				if (!sceneData) return next();
 
-			const scene = scenes.find((x) => x.name === sceneData.name);
-			if (!scene) return next();
+				const scene = scenes.find((x) => x.name === sceneData.name);
+				if (!scene) return next();
 
-			// @ts-expect-error
-			context.scene = getInActiveSceneHandler(
-				context,
-				storage,
-				sceneData,
-				scene,
-				key,
-			);
-			// @ts-expect-error
-			return scene.run(context, storage, key, sceneData);
-		})
+				// @ts-expect-error
+				context.scene = getInActiveSceneHandler(
+					context,
+					storage,
+					sceneData,
+					scene,
+					key,
+				);
+				// @ts-expect-error
+				return scene.run(context, storage, key, sceneData);
+			},
+		)
 		.derive(["message", "callback_query"], async (context) => {
 			return {
 				scene: await getSceneHandlers(context, storage, false, scenes),

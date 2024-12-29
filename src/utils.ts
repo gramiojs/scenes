@@ -12,8 +12,13 @@ import type {
 	StateTypesDefault,
 } from "./types.js";
 
+type ContextWithFrom = Pick<
+	ContextType<Bot, "message" | "callback_query">,
+	"from"
+>;
+
 export function getSceneEnter(
-	context: ContextType<Bot, "message" | "callback_query">,
+	context: ContextWithFrom,
 	storage: Storage,
 	key: string,
 ): SceneEnterHandler {
@@ -48,7 +53,7 @@ export function getSceneEnter(
 // }
 
 export async function getSceneHandlers<WithCurrentScene extends boolean>(
-	context: ContextType<Bot, "message" | "callback_query">,
+	context: ContextWithFrom,
 	storage: Storage,
 	withCurrentScene: WithCurrentScene,
 	scenes: AnyScene[],
@@ -85,7 +90,7 @@ export function getInActiveSceneHandler<
 	Params,
 	State extends StateTypesDefault,
 >(
-	context: ContextType<Bot, "message" | "callback_query">,
+	context: ContextWithFrom,
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
@@ -122,7 +127,7 @@ export function getInActiveSceneHandler<
 }
 
 export function getStepDerives(
-	context: ContextType<Bot, "message" | "callback_query">,
+	context: ContextWithFrom,
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
@@ -158,7 +163,7 @@ export function getStepDerives(
 }
 
 export function getInUnknownScene<Params, State extends StateTypesDefault>(
-	context: ContextType<Bot, "message" | "callback_query">,
+	context: ContextWithFrom,
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
@@ -175,7 +180,7 @@ export function getPossibleInSceneHandlers<
 	Params,
 	State extends StateTypesDefault,
 >(
-	context: ContextType<Bot, "message" | "callback_query">,
+	context: ContextWithFrom,
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
