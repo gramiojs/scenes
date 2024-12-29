@@ -154,20 +154,23 @@ export class Scene<
 		Modify<
 			Derives,
 			{
-				global: {
-					scene: Modify<
-						Derives["global"]["scene"],
-						{
-							state: Extract<Return, UpdateData<any>> extends UpdateData<
-								infer Type
-							>
-								? Record<string, never> extends State
-									? Type
-									: State & Type
-								: State;
-						}
-					>;
-				};
+				global: Modify<
+					Derives["global"],
+					{
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								state: Extract<Return, UpdateData<any>> extends UpdateData<
+									infer Type
+								>
+									? Record<string, never> extends State
+										? Type
+										: State & Type
+									: State;
+							}
+						>;
+					}
+				>;
 			}
 		>
 	>;
