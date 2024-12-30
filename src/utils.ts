@@ -48,6 +48,19 @@ export function getSceneEnter(
 	};
 }
 
+export function getSceneExit(
+	storage: Storage,
+	sceneData: ScenesStorageData,
+	key: string,
+) {
+	return () => {
+		// TODO: do it smarter. for now it fix overrides of scene exit
+		sceneData.firstTime = false;
+
+		return storage.delete(key);
+	};
+}
+
 // function isTrue(value: unknown): value is true {
 // 	return value === true;
 // }
@@ -96,7 +109,7 @@ export function getInActiveSceneHandler<
 	scene: AnyScene,
 	key: string,
 ): InActiveSceneHandlerReturn<Params, State> {
-	const stepDerives = getStepDerives(context, storage, sceneData, scene);
+	const stepDerives = getStepDerives(context, storage, sceneData, scene, key);
 
 	return {
 		state: sceneData.state,
@@ -120,7 +133,7 @@ export function getInActiveSceneHandler<
 			return state;
 		},
 		enter: getSceneEnter(context, storage, key),
-		exit: () => storage.delete(key),
+		exit: getSceneExit(storage, sceneData, key),
 		reenter: async () =>
 			getSceneEnter(context, storage, key)(scene, sceneData.params),
 	};
@@ -131,9 +144,8 @@ export function getStepDerives(
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
+	key: string,
 ): SceneStepReturn {
-	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-
 	async function go(stepId: number, firstTime = true) {
 		storageData.previousStepId = storageData.stepId;
 		storageData.stepId = stepId;
@@ -189,7 +201,7 @@ export function getPossibleInSceneHandlers<
 	return {
 		current: getInUnknownScene(context, storage, sceneData, scene, key),
 		enter: getSceneEnter(context, storage, key),
-		exit: () => storage.delete(key),
+		exit: getSceneExit(storage, sceneData, key),
 		// @ts-expect-error PRIVATE KEY
 		"~": {
 			data: sceneData,
