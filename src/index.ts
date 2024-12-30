@@ -134,7 +134,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 							context.scene["~"]?.data
 						: await storage.get<ScenesStorageData<unknown, unknown>>(key);
 
-				console.log("sceneData", sceneData);
+				// console.log("sceneData", sceneData);
 
 				if (!sceneData) return next();
 
