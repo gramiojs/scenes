@@ -1,4 +1,4 @@
-import { inMemoryStorage } from "@gramio/storage";
+import { type Storage, inMemoryStorage } from "@gramio/storage";
 import { Plugin } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
@@ -18,6 +18,10 @@ interface ScenesDerivesOptions<WithCurrentScene extends boolean = false>
 
 	// TODO: improve typings. withCurrentScene & scenes should be declared at the same time
 	scenes?: AnyScene[];
+	/**
+	 * You should use the same storage for scenes and scenesDerives
+	 */
+	storage: Storage;
 }
 
 export function scenesDerives<WithCurrentScene extends boolean = false>(
