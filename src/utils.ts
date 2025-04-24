@@ -21,8 +21,16 @@ export function getSceneEnter(
 	context: ContextWithFrom,
 	storage: Storage,
 	key: string,
+	allowedScenes: string[],
 ): SceneEnterHandler {
 	return async (scene, ...args) => {
+		if (!allowedScenes.includes(scene.name))
+			throw new Error(
+				`You should register this scene (${scene.name}) in plugin options (scenes: ${allowedScenes.join(
+					", ",
+				)})`,
+			);
+
 		const sceneParams: ScenesStorageData = {
 			name: scene.name,
 			state: {},
