@@ -216,3 +216,13 @@ export function getPossibleInSceneHandlers<
 		},
 	};
 }
+
+export function validateScenes(scenes: AnyScene[]): void {
+	const names = new Set<string>();
+	for (const scene of scenes) {
+		if (names.has(scene.name)) {
+			throw new Error(`Duplicate scene name detected: ${scene.name}`);
+		}
+		names.add(scene.name);
+	}
+}

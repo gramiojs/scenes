@@ -7,7 +7,11 @@ import type {
 	ScenesOptions,
 	ScenesStorageData,
 } from "./types.js";
-import { getInActiveSceneHandler, getSceneHandlers } from "./utils.js";
+import {
+	getInActiveSceneHandler,
+	getSceneHandlers,
+	validateScenes,
+} from "./utils.js";
 
 export * from "./scene.js";
 export * from "./types.js";
@@ -39,6 +43,8 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 	if (withCurrentScene && !scenes?.length)
 		throw new Error("scenes is required when withCurrentScene is true");
+
+	if (scenes?.length) validateScenes(scenes);
 
 	return new Plugin("@gramio/scenes:derives").derive(
 		// TODO: move it to separate array. but for now it casted to just string[] or readonly array (derive won't work with readonly)
@@ -94,6 +100,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
+	validateScenes(scenes);
 
 	// TODO: optimize storage usage
 	return new Plugin("@gramio/scenes")
