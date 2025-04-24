@@ -160,6 +160,9 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 		.derive(["message", "callback_query"], async (context) => {
 			return {
 				scene: await getSceneHandlers(context, storage, false, scenes),
+			} as {
+				// TODO: Make it cleaner
+				scene: Omit<EnterExit, "exit">;
 			};
 		});
 }
