@@ -46,6 +46,8 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 	if (scenes?.length) validateScenes(scenes);
 
+	const allowedScenes = scenes?.map((x) => x.name) ?? [];
+
 	return new Plugin("@gramio/scenes:derives").derive(
 		// TODO: move it to separate array. but for now it casted to just string[] or readonly array (derive won't work with readonly)
 		[
@@ -90,6 +92,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 					storage,
 					withCurrentScene,
 					scenes ?? [],
+					allowedScenes,
 				)) as WithCurrentScene extends true
 					? PossibleInUnknownScene<any, any>
 					: EnterExit,
@@ -101,6 +104,8 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
 	validateScenes(scenes);
+
+	const allowedScenes = scenes.map((x) => x.name);
 
 	// TODO: optimize storage usage
 	return new Plugin("@gramio/scenes")
@@ -166,7 +171,13 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 		)
 		.derive(["message", "callback_query"], async (context) => {
 			return {
-				scene: await getSceneHandlers(context, storage, false, scenes),
+				scene: await getSceneHandlers(
+					context,
+					storage,
+					false,
+					scenes,
+					allowedScenes,
+				),
 			} as {
 				// TODO: Make it cleaner
 				scene: Omit<EnterExit, "exit">;

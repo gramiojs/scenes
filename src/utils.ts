@@ -78,13 +78,14 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	storage: Storage,
 	withCurrentScene: WithCurrentScene,
 	scenes: AnyScene[],
+	allowedScenes: string[],
 ): Promise<
 	WithCurrentScene extends true ? PossibleInUnknownScene<any, any> : EnterExit
 > {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 
 	const enterExit = {
-		enter: getSceneEnter(context, storage, key),
+		enter: getSceneEnter(context, storage, key, allowedScenes),
 		exit: () => storage.delete(key),
 	};
 
@@ -100,7 +101,14 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 		// @ts-expect-error
 		if (!scene) return enterExit;
 
-		return getPossibleInSceneHandlers(context, storage, sceneData, scene, key);
+		return getPossibleInSceneHandlers(
+			context,
+			storage,
+			sceneData,
+			scene,
+			key,
+			allowedScenes,
+		);
 	}
 
 	// @ts-expect-error
@@ -116,6 +124,7 @@ export function getInActiveSceneHandler<
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
 	key: string,
+	allowedScenes: string[],
 ): InActiveSceneHandlerReturn<Params, State> {
 	const stepDerives = getStepDerives(context, storage, sceneData, scene, key);
 
@@ -140,10 +149,15 @@ export function getInActiveSceneHandler<
 
 			return state;
 		},
-		enter: getSceneEnter(context, storage, key),
+		enter: getSceneEnter(context, storage, key, allowedScenes),
 		exit: getSceneExit(storage, sceneData, key),
 		reenter: async () =>
-			getSceneEnter(context, storage, key)(scene, sceneData.params),
+			getSceneEnter(
+				context,
+				storage,
+				key,
+				allowedScenes,
+			)(scene, sceneData.params),
 	};
 }
 
@@ -205,10 +219,11 @@ export function getPossibleInSceneHandlers<
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
 	key: string,
+	allowedScenes: string[],
 ): PossibleInUnknownScene<Params, State> {
 	return {
 		current: getInUnknownScene(context, storage, sceneData, scene, key),
-		enter: getSceneEnter(context, storage, key),
+		enter: getSceneEnter(context, storage, key, allowedScenes),
 		exit: getSceneExit(storage, sceneData, key),
 		// @ts-expect-error PRIVATE KEY
 		"~": {
