@@ -1,4 +1,5 @@
 import type { Storage } from "@gramio/storage";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
 	AnyPlugin,
 	Bot,
@@ -196,6 +197,56 @@ export class Scene<
 			if (context.scene.step.id === stepId) return updateName(context, next);
 			if (context.scene.step.id > stepId) return await next();
 		});
+	}
+
+	ask<
+		Key extends string,
+		Schema extends StandardSchemaV1,
+		Return extends StateTypesDefault = {
+			[key in Key]: StandardSchemaV1.InferOutput<Schema>;
+		},
+	>(
+		key: Key,
+		validator: Schema,
+		firstTimeMessage: string,
+	): Scene<
+		Params,
+		Errors,
+		Record<string, never> extends State ? Return : State & Return,
+		Modify<
+			Derives,
+			{
+				global: Modify<
+					Derives["global"],
+					{
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								state: Record<string, never> extends State
+									? Return
+									: State & Return;
+							}
+						>;
+					}
+				>;
+			}
+		>
+	> {
+		// Types so hard for typescript
+		return this.step(["callback_query", "message"], async (context, next) => {
+			if (context.scene.step.firstTime) return context.send(firstTimeMessage);
+
+			let result = validator["~standard"].validate(
+				context.is("message") ? context.text : context.data,
+			);
+			if (result instanceof Promise) result = await result;
+
+			if (result.issues) return context.send(result.issues[0].message);
+
+			return context.scene.update({
+				[key]: result.value,
+			});
+		}) as any;
 	}
 
 	async compose(

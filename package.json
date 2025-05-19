@@ -33,12 +33,14 @@
 	],
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
+		"@gramio/storage-redis": "^1.0.2",
+		"@standard-schema/spec": "^1.0.0",
 		"@types/bun": "^1.1.14",
 		"gramio": "^0.2.0",
 		"middleware-io": "^2.8.1",
 		"pkgroll": "^2.6.0",
 		"typescript": "^5.7.2",
-		"@gramio/storage-redis": "^1.0.2"
+		"zod": "^3.25.4"
 	},
 	"peerDependencies": {
 		"gramio": ">=0.0.39 <1.0.0",
