@@ -202,9 +202,17 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
 	key: string,
+	allowedScenes: string[],
 ): InUnknownScene<Params, State> {
 	return {
-		...getInActiveSceneHandler(context, storage, sceneData, scene, key),
+		...getInActiveSceneHandler(
+			context,
+			storage,
+			sceneData,
+			scene,
+			key,
+			allowedScenes,
+		),
 		// @ts-expect-error
 		is: (scene) => scene.name === sceneData.name,
 	};
@@ -222,7 +230,14 @@ export function getPossibleInSceneHandlers<
 	allowedScenes: string[],
 ): PossibleInUnknownScene<Params, State> {
 	return {
-		current: getInUnknownScene(context, storage, sceneData, scene, key),
+		current: getInUnknownScene(
+			context,
+			storage,
+			sceneData,
+			scene,
+			key,
+			allowedScenes,
+		),
 		enter: getSceneEnter(context, storage, key, allowedScenes),
 		exit: getSceneExit(storage, sceneData, key),
 		// @ts-expect-error PRIVATE KEY
