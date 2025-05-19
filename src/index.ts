@@ -144,10 +144,14 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			async (context, next) => {
 				const key = `@gramio/scenes:${context.from?.id ?? 0}`;
 				const sceneData =
-					// @ts-expect-error PRIVATE KEY USAGE
-					"scene" in context && "~" in context.scene
-						? // @ts-expect-error PRIVATE KEY USAGE
-							context.scene["~"]?.data
+					"scene" in context &&
+					typeof context.scene === "object" &&
+					context.scene &&
+					"~" in context.scene &&
+					typeof context.scene["~"] === "object" &&
+					context.scene["~"] &&
+					"data" in context.scene["~"]
+						? context.scene["~"].data
 						: await storage.get<ScenesStorageData<unknown, unknown>>(key);
 
 				// console.log("sceneData", sceneData);
@@ -165,7 +169,8 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 					scene,
 					key,
 				);
-				// @ts-expect-error
+
+				// @ts-ignore
 				return scene.run(context, storage, key, sceneData);
 			},
 		)
