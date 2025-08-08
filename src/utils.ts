@@ -47,6 +47,7 @@ export function getSceneEnter(
 			sceneParams,
 			scene,
 			key,
+			allowedScenes,
 		);
 		// @ts-expect-error
 		await scene.compose(context, async () => {

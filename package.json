@@ -1,6 +1,6 @@
 {
 	"name": "@gramio/scenes",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Scenes plugin for GramIO",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
@@ -47,6 +47,7 @@
 		"middleware-io": "^2.8.1"
 	},
 	"files": ["dist"],
+	"license": "MIT",
 	"dependencies": {
 		"@gramio/storage": "^1.0.0"
 	}
