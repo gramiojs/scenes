@@ -10,6 +10,7 @@ import type {
 	Handler,
 	MaybeArray,
 	MaybePromise,
+	Stringable,
 	UpdateName,
 } from "gramio";
 import { Composer } from "gramio";
@@ -208,7 +209,7 @@ export class Scene<
 	>(
 		key: Key,
 		validator: Schema,
-		firstTimeMessage: string,
+		firstTimeMessage: Stringable,
 	): Scene<
 		Params,
 		Errors,
