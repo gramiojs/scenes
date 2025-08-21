@@ -164,13 +164,17 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				const scene = scenes.find((x) => x.name === sceneData.name);
 				if (!scene) return next();
 
-				// @ts-expect-error
-				context.scene = getInActiveSceneHandler(
-					context,
+				const ctx = context as typeof context & {
+					scene: InActiveSceneHandlerReturn<any, any>;
+				};
+
+				ctx.scene = getInActiveSceneHandler(
+					ctx,
 					storage,
 					sceneData,
 					scene,
 					key,
+					allowedScenes,
 				);
 
 				// @ts-ignore
