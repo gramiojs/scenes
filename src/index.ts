@@ -3,6 +3,7 @@ import { Plugin } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
+	InActiveSceneHandlerReturn,
 	PossibleInUnknownScene,
 	ScenesOptions,
 	ScenesStorageData,
@@ -88,7 +89,9 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 			return {
 				scene: (await getSceneHandlers(
-					context,
+					context as typeof context & {
+						scene: InActiveSceneHandlerReturn<any, any>;
+					},
 					storage,
 					withCurrentScene,
 					scenes ?? [],
@@ -177,7 +180,9 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 		.derive(["message", "callback_query"], async (context) => {
 			return {
 				scene: await getSceneHandlers(
-					context,
+					context as typeof context & {
+						scene: InActiveSceneHandlerReturn<any, any>;
+					},
 					storage,
 					false,
 					scenes,

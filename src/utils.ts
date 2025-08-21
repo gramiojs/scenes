@@ -18,7 +18,7 @@ type ContextWithFrom = Pick<
 >;
 
 export function getSceneEnter(
-	context: ContextWithFrom,
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
 	key: string,
 	allowedScenes: string[],
@@ -40,7 +40,6 @@ export function getSceneEnter(
 			firstTime: true,
 		};
 		await storage.set(key, sceneParams);
-		// @ts-expect-error
 		context.scene = getInActiveSceneHandler(
 			context,
 			storage,
@@ -49,6 +48,7 @@ export function getSceneEnter(
 			key,
 			allowedScenes,
 		);
+
 		// @ts-expect-error
 		await scene.compose(context, async () => {
 			const sceneData = await storage.get<ScenesStorageData>(key);
@@ -75,7 +75,7 @@ export function getSceneExit(
 // }
 
 export async function getSceneHandlers<WithCurrentScene extends boolean>(
-	context: ContextWithFrom,
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
 	withCurrentScene: WithCurrentScene,
 	scenes: AnyScene[],
@@ -120,14 +120,21 @@ export function getInActiveSceneHandler<
 	Params,
 	State extends StateTypesDefault,
 >(
-	context: ContextWithFrom,
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
 	key: string,
 	allowedScenes: string[],
 ): InActiveSceneHandlerReturn<Params, State> {
-	const stepDerives = getStepDerives(context, storage, sceneData, scene, key);
+	const stepDerives = getStepDerives(
+		context,
+		storage,
+		sceneData,
+		scene,
+		key,
+		allowedScenes,
+	);
 
 	return {
 		state: sceneData.state,
@@ -163,11 +170,12 @@ export function getInActiveSceneHandler<
 }
 
 export function getStepDerives(
-	context: ContextWithFrom,
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
 	key: string,
+	allowedScenes: string[],
 ): SceneStepReturn {
 	async function go(stepId: number, firstTime = true) {
 		storageData.previousStepId = storageData.stepId;
@@ -175,13 +183,14 @@ export function getStepDerives(
 		storageData.firstTime = firstTime;
 		// console.log("Oh we go to step", stepId);
 		// await storage.set(key, storageData);
-		//@ts-expect-error
+
 		context.scene = getInActiveSceneHandler(
 			context,
 			storage,
 			storageData,
 			scene,
 			key,
+			allowedScenes,
 		);
 		// @ts-expect-error
 		await scene.run(context, storage, key, storageData);
@@ -198,7 +207,7 @@ export function getStepDerives(
 }
 
 export function getInUnknownScene<Params, State extends StateTypesDefault>(
-	context: ContextWithFrom,
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
@@ -223,7 +232,7 @@ export function getPossibleInSceneHandlers<
 	Params,
 	State extends StateTypesDefault,
 >(
-	context: ContextWithFrom,
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
