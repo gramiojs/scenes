@@ -117,7 +117,7 @@ export class Scene<
 		return this;
 	}
 	
-	enter(
+	onEnter(
 	    handler: (context: ContextType<Bot, 'message'> & Derives["global"]) => unknown,
 	) {
 	    this['~'].enter = handler
