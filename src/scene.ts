@@ -39,10 +39,6 @@ export type SceneDerivesDefinitions<
 	};
 };
 
-type ExtractUpdateData<T> = T extends UpdateData<infer U>
-	? UpdateData<U>
-	: never;
-
 export class Scene<
 	Params = never,
 	Errors extends ErrorDefinitions = {},
@@ -57,6 +53,8 @@ export class Scene<
 		params: {} as Params,
 		state: {} as State,
 		composer: new Composer(),
+		
+		enter: (ctx: ContextType<Bot, 'message'> & Derives["global"]) => {}
 	};
 
 	name: string;
@@ -117,6 +115,14 @@ export class Scene<
 		Derives & NewPlugin["_"]["Derives"]
 	> {
 		return this;
+	}
+	
+	onEnter(
+	    handler: (context: ContextType<Bot, 'message'> & Derives["global"]) => unknown,
+	) {
+	    this['~'].enter = handler
+
+		return this
 	}
 
 	on<T extends UpdateName>(
@@ -270,8 +276,10 @@ export class Scene<
 	) {
 		return this.compose(context, async () => {
 			// TODO: We should know is state edited or not?
-
-			if (data.firstTime) await storage.set(key, { ...data, firstTime: false });
+			
+			if (data.firstTime) {
+			    await storage.set(key, { ...data, firstTime: false });
+			}
 		});
 	}
 }

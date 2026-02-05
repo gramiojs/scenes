@@ -52,6 +52,9 @@ export function getSceneEnter(
 		// @ts-expect-error
 		await scene.compose(context, async () => {
 			const sceneData = await storage.get<ScenesStorageData>(key);
+			
+			await scene['~'].enter(context)
+			
 			await storage.set(key, { ...sceneData, firstTime: false });
 		});
 	};
