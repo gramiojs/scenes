@@ -266,3 +266,36 @@ export function validateScenes(scenes: AnyScene[]): void {
 		names.add(scene.name);
 	}
 }
+
+export const events = [
+	"message",
+	"callback_query",
+	"channel_post",
+	"chat_join_request",
+	"chosen_inline_result",
+	"inline_query",
+	"web_app_data",
+	"successful_payment",
+	"video_chat_started",
+	"video_chat_ended",
+	"video_chat_scheduled",
+	"video_chat_participants_invited",
+	"passport_data",
+	"new_chat_title",
+	"new_chat_photo",
+	"pinned_message",
+	// "poll_answer",
+	"pre_checkout_query",
+	"proximity_alert_triggered",
+	"shipping_query",
+	"group_chat_created",
+	"delete_chat_photo",
+	"location",
+	"invoice",
+	"message_auto_delete_timer_changed",
+	"migrate_from_chat_id",
+	"migrate_to_chat_id",
+	"new_chat_members",
+	"chat_shared",
+	"users_shared",
+] as const;
