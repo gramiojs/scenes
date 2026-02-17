@@ -8,6 +8,7 @@ import type {
 	PossibleInUnknownScene,
 	SceneEnterHandler,
 	SceneStepReturn,
+	ScenesStorage,
 	ScenesStorageData,
 	StateTypesDefault,
 } from "./types.js";
@@ -19,8 +20,8 @@ type ContextWithFrom = Pick<
 
 export function getSceneEnter(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
-	storage: Storage,
-	key: string,
+	storage: ScenesStorage,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): SceneEnterHandler {
 	return async (scene, ...args) => {
@@ -51,7 +52,8 @@ export function getSceneEnter(
 
 		// @ts-expect-error
 		await scene.compose(context, async () => {
-			const sceneData = await storage.get<ScenesStorageData>(key);
+			const sceneData = await storage.get(key);
+			if (!sceneData) return;
 			await storage.set(key, { ...sceneData, firstTime: false });
 		});
 	};
@@ -60,7 +62,7 @@ export function getSceneEnter(
 export function getSceneExit(
 	storage: Storage,
 	sceneData: ScenesStorageData,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 ) {
 	return () => {
 		// TODO: do it smarter. for now it fix overrides of scene exit
@@ -76,14 +78,14 @@ export function getSceneExit(
 
 export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
-	storage: Storage,
+	storage: ScenesStorage,
 	withCurrentScene: WithCurrentScene,
 	scenes: AnyScene[],
 	allowedScenes: string[],
 ): Promise<
 	WithCurrentScene extends true ? PossibleInUnknownScene<any, any> : EnterExit
 > {
-	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
+	const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
 
 	const enterExit = {
 		enter: getSceneEnter(context, storage, key, allowedScenes),
@@ -91,8 +93,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	};
 
 	if (withCurrentScene) {
-		const sceneData =
-			await storage.get<ScenesStorageData<unknown, unknown>>(key);
+		const sceneData = await storage.get(key);
 
 		// TODO: fix type issues. predicates are not smart for now
 		// @ts-expect-error
@@ -105,7 +106,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 		return getPossibleInSceneHandlers(
 			context,
 			storage,
-			sceneData,
+			sceneData as ScenesStorageData<any, any>,
 			scene,
 			key,
 			allowedScenes,
@@ -124,7 +125,7 @@ export function getInActiveSceneHandler<
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): InActiveSceneHandlerReturn<Params, State> {
 	const stepDerives = getStepDerives(
@@ -174,7 +175,7 @@ export function getStepDerives(
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): SceneStepReturn {
 	async function go(stepId: number, firstTime = true) {
@@ -211,7 +212,7 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): InUnknownScene<Params, State> {
 	return {
@@ -233,10 +234,10 @@ export function getPossibleInSceneHandlers<
 	State extends StateTypesDefault,
 >(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
-	storage: Storage,
+	storage: ScenesStorage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): PossibleInUnknownScene<Params, State> {
 	return {
