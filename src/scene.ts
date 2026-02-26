@@ -8,6 +8,7 @@ import {
 	type ContextType,
 	type DeriveDefinitions,
 	type ErrorDefinitions,
+	type EventComposer,
 	type Handler,
 	type MaybeArray,
 	type MaybePromise,
@@ -101,9 +102,15 @@ export class Scene<
 		>;
 	}
 
-	/**
-	 *
-	 *  */
+	extend<UExposed extends object, UDerives extends Record<string, object>>(
+		composer: EventComposer<any, any, any, any, UExposed, UDerives, any>,
+	): Scene<
+		Params,
+		Errors,
+		State,
+		Derives & { global: UExposed } & UDerives
+	>;
+
 	extend<NewPlugin extends AnyPlugin>(
 		plugin: NewPlugin,
 	): Scene<
@@ -112,8 +119,24 @@ export class Scene<
 		State,
 		// @ts-expect-error
 		Derives & NewPlugin["_"]["Derives"]
-	> {
-		this["~"].composer.extend(plugin);
+	>;
+
+	extend(
+		pluginOrComposer:
+			| AnyPlugin
+			| EventComposer<any, any, any, any, any, any, any>,
+	): this {
+		if (
+			"compose" in pluginOrComposer &&
+			"run" in pluginOrComposer &&
+			!("_" in pluginOrComposer)
+		) {
+			// EventComposer: deduplication is handled internally via composer["~"].extended
+			this["~"].composer.extend(pluginOrComposer as any);
+		} else {
+			// AnyPlugin: Plugin exposes get "~"() that duck-types as Composer
+			this["~"].composer.extend(pluginOrComposer as any);
+		}
 
 		return this;
 	}
