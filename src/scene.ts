@@ -15,6 +15,7 @@ import {
 	type Next,
 	type Stringable,
 	type UpdateName,
+	compose,
 	noopNext,
 } from "gramio";
 import type {
@@ -299,7 +300,27 @@ export class Scene<
 		},
 		onNext?: () => unknown,
 	) {
-		await this["~"].composer.run(context, noopNext);
+		// Cross-chain dedup: if a named Composer/Plugin was already applied in the
+		// bot's main chain (bot.extend(withUser)), skip it here so it doesn't run
+		// twice. The bot's extended-set is keyed as "<name>:<seed>" (e.g.
+		// "withUser:null"), and each middleware carries the plugin name it came from.
+		const botExtended = context.bot?.updates?.composer?.["~"]?.extended;
+
+		if (botExtended?.size) {
+			const fns = this["~"].composer["~"].middlewares
+				.filter((m) => {
+					if (!m.plugin) return true;
+					for (const key of botExtended) {
+						if (key.startsWith(`${m.plugin}:`)) return false;
+					}
+					return true;
+				})
+				.map((m) => m.fn);
+			await compose(fns)(context, noopNext);
+		} else {
+			await this["~"].composer.run(context, noopNext);
+		}
+
 		onNext?.();
 	}
 
