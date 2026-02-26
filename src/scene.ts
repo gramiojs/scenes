@@ -1,20 +1,21 @@
 import type { Storage } from "@gramio/storage";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type {
-	AnyPlugin,
-	Bot,
-	Context,
-	ContextType,
-	DeriveDefinitions,
-	ErrorDefinitions,
-	Handler,
-	MaybeArray,
-	MaybePromise,
-	Stringable,
-	UpdateName,
+import {
+	type AnyPlugin,
+	type Bot,
+	Composer,
+	type Context,
+	type ContextType,
+	type DeriveDefinitions,
+	type ErrorDefinitions,
+	type Handler,
+	type MaybeArray,
+	type MaybePromise,
+	type Next,
+	type Stringable,
+	type UpdateName,
+	noopNext,
 } from "gramio";
-import { Composer } from "gramio";
-import { type NextMiddleware, noopNext } from "middleware-io";
 import type {
 	Modify,
 	ScenesStorageData,
@@ -25,10 +26,7 @@ import type { getInActiveSceneHandler } from "./utils.js";
 
 export type AnyScene = Scene<any, any, any, any>;
 
-export type StepHandler<T, Return = any> = (
-	context: T,
-	next: NextMiddleware,
-) => any;
+export type StepHandler<T, Return = any> = (context: T, next: Next) => any;
 
 export type SceneDerivesDefinitions<
 	Params,
@@ -104,9 +102,10 @@ export class Scene<
 	}
 
 	/**
-	 * ! ** At the moment, it can only pick up types** */
+	 *
+	 *  */
 	extend<NewPlugin extends AnyPlugin>(
-		plugin: MaybePromise<NewPlugin>,
+		plugin: NewPlugin,
 	): Scene<
 		Params,
 		Errors & NewPlugin["_"]["Errors"],
@@ -114,6 +113,8 @@ export class Scene<
 		// @ts-expect-error
 		Derives & NewPlugin["_"]["Derives"]
 	> {
+		this["~"].composer.extend(plugin);
+
 		return this;
 	}
 	
@@ -129,12 +130,14 @@ export class Scene<
 		updateName: MaybeArray<T>,
 		handler: Handler<ContextType<Bot, T> & Derives["global"] & Derives[T]>,
 	) {
+		// @ts-expect-error
 		this["~"].composer.on(updateName, handler);
 
 		return this;
 	}
 
 	use(handler: Handler<Context<Bot> & Derives["global"]>) {
+		// @ts-expect-error
 		this["~"].composer.use(handler);
 
 		return this;
@@ -216,6 +219,12 @@ export class Scene<
 		key: Key,
 		validator: Schema,
 		firstTimeMessage: Stringable,
+		options?: {
+			/** Custom message when validation fails. Receives all issues from the validator. */
+			onInvalidInput?: (
+				issues: readonly StandardSchemaV1.Issue[],
+			) => Stringable;
+		},
 	): Scene<
 		Params,
 		Errors,
@@ -248,7 +257,12 @@ export class Scene<
 			);
 			if (result instanceof Promise) result = await result;
 
-			if (result.issues) return context.send(result.issues[0].message);
+			if (result.issues)
+				return context.send(
+					options?.onInvalidInput
+						? options.onInvalidInput(result.issues)
+						: result.issues[0]!.message,
+				);
 
 			return context.scene.update({
 				[key]: result.value,
@@ -262,7 +276,7 @@ export class Scene<
 		},
 		onNext?: () => unknown,
 	) {
-		await this["~"].composer.composed(context, noopNext);
+		await this["~"].composer.run(context, noopNext);
 		onNext?.();
 	}
 

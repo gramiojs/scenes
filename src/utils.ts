@@ -8,6 +8,7 @@ import type {
 	PossibleInUnknownScene,
 	SceneEnterHandler,
 	SceneStepReturn,
+	ScenesStorage,
 	ScenesStorageData,
 	StateTypesDefault,
 } from "./types.js";
@@ -19,8 +20,8 @@ type ContextWithFrom = Pick<
 
 export function getSceneEnter(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
-	storage: Storage,
-	key: string,
+	storage: ScenesStorage,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): SceneEnterHandler {
 	return async (scene, ...args) => {
@@ -49,12 +50,13 @@ export function getSceneEnter(
 			allowedScenes,
 		);
 
+		await scene["~"].enter(context);
+
 		// @ts-expect-error
 		await scene.compose(context, async () => {
-			const sceneData = await storage.get<ScenesStorageData>(key);
-			
-			await scene['~'].enter(context)
-			
+			const sceneData = await storage.get(key);
+			if (!sceneData) return;
+
 			await storage.set(key, { ...sceneData, firstTime: false });
 		});
 	};
@@ -63,7 +65,7 @@ export function getSceneEnter(
 export function getSceneExit(
 	storage: Storage,
 	sceneData: ScenesStorageData,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 ) {
 	return () => {
 		// TODO: do it smarter. for now it fix overrides of scene exit
@@ -79,14 +81,14 @@ export function getSceneExit(
 
 export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
-	storage: Storage,
+	storage: ScenesStorage,
 	withCurrentScene: WithCurrentScene,
 	scenes: AnyScene[],
 	allowedScenes: string[],
 ): Promise<
 	WithCurrentScene extends true ? PossibleInUnknownScene<any, any> : EnterExit
 > {
-	const key = `@gramio/scenes:${context.from?.id ?? 0}`;
+	const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
 
 	const enterExit = {
 		enter: getSceneEnter(context, storage, key, allowedScenes),
@@ -94,8 +96,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	};
 
 	if (withCurrentScene) {
-		const sceneData =
-			await storage.get<ScenesStorageData<unknown, unknown>>(key);
+		const sceneData = await storage.get(key);
 
 		// TODO: fix type issues. predicates are not smart for now
 		// @ts-expect-error
@@ -108,7 +109,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 		return getPossibleInSceneHandlers(
 			context,
 			storage,
-			sceneData,
+			sceneData as ScenesStorageData<any, any>,
 			scene,
 			key,
 			allowedScenes,
@@ -127,7 +128,7 @@ export function getInActiveSceneHandler<
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): InActiveSceneHandlerReturn<Params, State> {
 	const stepDerives = getStepDerives(
@@ -177,7 +178,7 @@ export function getStepDerives(
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): SceneStepReturn {
 	async function go(stepId: number, firstTime = true) {
@@ -214,7 +215,7 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): InUnknownScene<Params, State> {
 	return {
@@ -236,10 +237,10 @@ export function getPossibleInSceneHandlers<
 	State extends StateTypesDefault,
 >(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
-	storage: Storage,
+	storage: ScenesStorage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: string,
+	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 ): PossibleInUnknownScene<Params, State> {
 	return {
@@ -269,3 +270,36 @@ export function validateScenes(scenes: AnyScene[]): void {
 		names.add(scene.name);
 	}
 }
+
+export const events = [
+	"message",
+	"callback_query",
+	"channel_post",
+	"chat_join_request",
+	"chosen_inline_result",
+	"inline_query",
+	"web_app_data",
+	"successful_payment",
+	"video_chat_started",
+	"video_chat_ended",
+	"video_chat_scheduled",
+	"video_chat_participants_invited",
+	"passport_data",
+	"new_chat_title",
+	"new_chat_photo",
+	"pinned_message",
+	// "poll_answer",
+	"pre_checkout_query",
+	"proximity_alert_triggered",
+	"shipping_query",
+	"group_chat_created",
+	"delete_chat_photo",
+	"location",
+	"invoice",
+	"message_auto_delete_timer_changed",
+	"migrate_from_chat_id",
+	"migrate_to_chat_id",
+	"new_chat_members",
+	"chat_shared",
+	"users_shared",
+] as const;

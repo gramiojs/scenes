@@ -8,8 +8,15 @@ export type StateTypesDefault = Record<string | number, any>;
 
 export type UpdateData<T extends StateTypesDefault> = {};
 
+export type ScenesStorage = Storage<
+	Record<
+		`@gramio/scenes:${string | number}`,
+		ScenesStorageData<unknown, unknown>
+	>
+>;
+
 export interface ScenesOptions {
-	storage?: Storage;
+	storage?: ScenesStorage;
 }
 
 export interface ScenesStorageData<Params = any, State = any> {

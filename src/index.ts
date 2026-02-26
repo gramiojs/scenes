@@ -1,5 +1,5 @@
 import { type Storage, inMemoryStorage } from "@gramio/storage";
-import { Plugin } from "gramio";
+import { Composer, Plugin } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
@@ -9,6 +9,7 @@ import type {
 	ScenesStorageData,
 } from "./types.js";
 import {
+	events,
 	getInActiveSceneHandler,
 	getSceneHandlers,
 	validateScenes,
@@ -49,59 +50,38 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 	const allowedScenes = scenes?.map((x) => x.name) ?? [];
 
-	return new Plugin("@gramio/scenes:derives").derive(
-		// TODO: move it to separate array. but for now it casted to just string[] or readonly array (derive won't work with readonly)
-		[
-			"message",
-			"callback_query",
-			"channel_post",
-			"chat_join_request",
-			"chosen_inline_result",
-			"inline_query",
-			"web_app_data",
-			"successful_payment",
-			"video_chat_started",
-			"video_chat_ended",
-			"video_chat_scheduled",
-			"video_chat_participants_invited",
-			"passport_data",
-			"new_chat_title",
-			"new_chat_photo",
-			"pinned_message",
-			// "poll_answer",
-			"pre_checkout_query",
-			"proximity_alert_triggered",
-			"shipping_query",
-			"group_chat_created",
-			"delete_chat_photo",
-			"location",
-			"invoice",
-			"message_auto_delete_timer_changed",
-			"migrate_from_chat_id",
-			"migrate_to_chat_id",
-			"new_chat_members",
-			"chat_shared",
-		],
-		async (context) => {
-			if (withCurrentScene) {
-				// TODO: move getSceneHandlers.withCurrentScene here and avoid useless async next
-			}
+	// Encode scene names + options into the plugin name so that gramio's
+	// name-based deduplication correctly identifies identical registrations
+	// while allowing distinct scene sets to coexist.
+	const sceneSeed = allowedScenes.slice().sort().join("|");
+	const pluginName = [
+		"@gramio/scenes:derives",
+		withCurrentScene && "withCurrentScene",
+		sceneSeed && `[${sceneSeed}]`,
+	]
+		.filter(Boolean)
+		.join(":");
 
-			return {
-				scene: (await getSceneHandlers(
-					context as typeof context & {
-						scene: InActiveSceneHandlerReturn<any, any>;
-					},
-					storage,
-					withCurrentScene,
-					scenes ?? [],
-					allowedScenes,
-				)) as WithCurrentScene extends true
-					? PossibleInUnknownScene<any, any>
-					: EnterExit,
-			};
-		},
-	);
+	return new Composer({ name: pluginName }).derive(events, async (context) => {
+		if (withCurrentScene) {
+			// TODO: move getSceneHandlers.withCurrentScene here and avoid useless async next
+		}
+
+		return {
+			scene: (await getSceneHandlers(
+				//@ts-expect-error
+				context as typeof context & {
+					scene: InActiveSceneHandlerReturn<any, any>;
+				},
+				storage,
+				withCurrentScene,
+				scenes ?? [],
+				allowedScenes,
+			)) as WithCurrentScene extends true
+				? PossibleInUnknownScene<any, any>
+				: EnterExit,
+		};
+	});
 }
 
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
@@ -110,77 +90,49 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 
 	const allowedScenes = scenes.map((x) => x.name);
 
+	// Encode registered scene names into the plugin name so gramio's
+	// name-based deduplication can distinguish between different scene sets.
+	const pluginName = `@gramio/scenes[${allowedScenes.slice().sort().join("|")}]`;
+
 	// TODO: optimize storage usage
-	return new Plugin("@gramio/scenes")
-		.on(
-			[
-				"message",
-				"callback_query",
-				"channel_post",
-				"chat_join_request",
-				"chosen_inline_result",
-				"inline_query",
-				"web_app_data",
-				"successful_payment",
-				"video_chat_started",
-				"video_chat_ended",
-				"video_chat_scheduled",
-				"video_chat_participants_invited",
-				"passport_data",
-				"new_chat_title",
-				"new_chat_photo",
-				"pinned_message",
-				// "poll_answer",
-				"pre_checkout_query",
-				"proximity_alert_triggered",
-				"shipping_query",
-				"group_chat_created",
-				"delete_chat_photo",
-				"location",
-				"invoice",
-				"message_auto_delete_timer_changed",
-				"migrate_from_chat_id",
-				"migrate_to_chat_id",
-				"new_chat_members",
-				"chat_shared",
-			],
-			async (context, next) => {
-				const key = `@gramio/scenes:${context.from?.id ?? 0}`;
-				const sceneData =
-					"scene" in context &&
-					typeof context.scene === "object" &&
-					context.scene &&
-					"~" in context.scene &&
-					typeof context.scene["~"] === "object" &&
-					context.scene["~"] &&
-					"data" in context.scene["~"]
-						? context.scene["~"].data
-						: await storage.get<ScenesStorageData<unknown, unknown>>(key);
+	return new Plugin(pluginName)
+		.on(events, async (context, next) => {
+			const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
+			const sceneData =
+				"scene" in context &&
+				typeof context.scene === "object" &&
+				context.scene &&
+				"~" in context.scene &&
+				typeof context.scene["~"] === "object" &&
+				context.scene["~"] &&
+				"data" in context.scene["~"]
+					? context.scene["~"].data as ScenesStorageData
+					: await storage.get(key);
 
-				// console.log("sceneData", sceneData);
+			// console.log("sceneData", sceneData);
 
-				if (!sceneData) return next();
+			if (!sceneData) return next();
 
-				const scene = scenes.find((x) => x.name === sceneData.name);
-				if (!scene) return next();
+			const scene = scenes.find((x) => x.name === sceneData.name);
+			if (!scene) return next();
 
-				const ctx = context as typeof context & {
-					scene: InActiveSceneHandlerReturn<any, any>;
-				};
+			const ctx = context as typeof context & {
+				scene: InActiveSceneHandlerReturn<any, any>;
+			};
 
-				ctx.scene = getInActiveSceneHandler(
-					ctx,
-					storage,
-					sceneData,
-					scene,
-					key,
-					allowedScenes,
-				);
+			ctx.scene = getInActiveSceneHandler(
+				// @ts-expect-error
+				ctx,
+				storage,
+				sceneData,
+				scene,
+				key,
+				allowedScenes,
+			);
 
-				// @ts-ignore
-				return scene.run(context, storage, key, sceneData);
-			},
-		)
+			// @ts-ignore
+			return scene.run(context, storage, key, sceneData);
+		})
 		.derive(["message", "callback_query"], async (context) => {
 			return {
 				scene: await getSceneHandlers(
