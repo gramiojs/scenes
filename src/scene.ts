@@ -33,9 +33,10 @@ export type StepHandler<T, Return = any> = (context: T, next: Next) => any;
 export type SceneDerivesDefinitions<
 	Params,
 	State extends StateTypesDefault,
+	ExitData extends Record<string, unknown> = Record<string, unknown>,
 > = DeriveDefinitions & {
 	global: {
-		scene: ReturnType<typeof getInActiveSceneHandler<Params, State>>;
+		scene: ReturnType<typeof getInActiveSceneHandler<Params, State, ExitData>>;
 	};
 };
 
@@ -45,7 +46,8 @@ export class Scene<
 	State extends StateTypesDefault = Record<string, never>,
 	Derives extends SceneDerivesDefinitions<
 		Params,
-		State
+		State,
+		any
 	> = SceneDerivesDefinitions<Params, State>,
 > {
 	/** @internal */
@@ -103,6 +105,30 @@ export class Scene<
 		>;
 	}
 
+	exitData<ExitData extends Record<string, unknown>>() {
+		return this as unknown as Scene<
+			Params,
+			Errors,
+			State,
+			Modify<
+				Derives,
+				{
+					global: Modify<
+						Derives["global"],
+						{
+							scene: Modify<
+								Derives["global"]["scene"],
+								{
+									exitSub: (returnData?: ExitData) => Promise<void>;
+								}
+							>;
+						}
+					>;
+				}
+			>
+		>;
+	}
+
 	extend<UExposed extends object, UDerives extends Record<string, object>>(
 		composer: EventComposer<any, any, any, any, UExposed, UDerives, any>,
 	): Scene<
@@ -154,14 +180,12 @@ export class Scene<
 		updateName: MaybeArray<T>,
 		handler: Handler<ContextType<Bot, T> & Derives["global"] & Derives[T]>,
 	) {
-		// @ts-expect-error
 		this["~"].composer.on(updateName, handler);
 
 		return this;
 	}
 
 	use(handler: Handler<Context<Bot> & Derives["global"]>) {
-		// @ts-expect-error
 		this["~"].composer.use(handler);
 
 		return this;

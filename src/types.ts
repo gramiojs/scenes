@@ -80,6 +80,7 @@ export type SceneStepReturn = {
 export interface InActiveSceneHandlerReturn<
 	Params,
 	State extends StateTypesDefault,
+	ExitData extends Record<string, unknown> = Record<string, unknown>,
 > extends EnterExit {
 	state: State;
 	params: Params;
@@ -93,7 +94,7 @@ export interface InActiveSceneHandlerReturn<
 	reenter: () => Promise<void>;
 
 	enterSub: SceneEnterHandler;
-	exitSub: (returnData?: Record<string, unknown>) => Promise<void>;
+	exitSub: (returnData?: ExitData) => Promise<void>;
 }
 
 export interface InUnknownScene<

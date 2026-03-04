@@ -241,6 +241,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 export function getInActiveSceneHandler<
 	Params,
 	State extends StateTypesDefault,
+	ExitData extends Record<string, unknown> = Record<string, unknown>,
 >(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: Storage,
@@ -249,7 +250,7 @@ export function getInActiveSceneHandler<
 	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
-): InActiveSceneHandlerReturn<Params, State> {
+): InActiveSceneHandlerReturn<Params, State, ExitData> {
 	const stepDerives = getStepDerives(
 		context,
 		storage,
