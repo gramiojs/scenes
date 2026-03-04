@@ -19,6 +19,15 @@ export interface ScenesOptions {
 	storage?: ScenesStorage;
 }
 
+export interface ParentSceneFrame {
+	name: string;
+	params: unknown;
+	state: unknown;
+	stepId: number;
+	previousStepId: number;
+	parentStack?: ParentSceneFrame[];
+}
+
 export interface ScenesStorageData<Params = any, State = any> {
 	name: string;
 	params: Params;
@@ -26,6 +35,7 @@ export interface ScenesStorageData<Params = any, State = any> {
 	stepId: number;
 	previousStepId: number;
 	firstTime: boolean;
+	parentStack?: ParentSceneFrame[];
 }
 
 // type ExtractedReturn<Return, State> = Return extends UpdateData<infer Type>
@@ -81,6 +91,9 @@ export interface InActiveSceneHandlerReturn<
 	step: SceneStepReturn;
 
 	reenter: () => Promise<void>;
+
+	enterSub: SceneEnterHandler;
+	exitSub: (returnData?: Record<string, unknown>) => Promise<void>;
 }
 
 export interface InUnknownScene<

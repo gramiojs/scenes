@@ -807,6 +807,187 @@ describe("Multiple scenes registered together", () => {
 	});
 });
 
+// ─── Sub-scenes (enterSub / exitSub) ──────────────────────────────────────────
+
+describe("Sub-scenes (enterSub / exitSub)", () => {
+	it("basic flow: parent step resumes with firstTime=false after sub-scene completes", async () => {
+		const log: Array<{ scene: string; step: number; firstTime: boolean }> = [];
+
+		const subScene = new Scene("sub-basic")
+			.step("message", async (ctx) => {
+				log.push({ scene: "sub", step: 0, firstTime: ctx.scene.step.firstTime });
+				if (ctx.scene.step.firstTime) return ctx.send("sub: enter code");
+				return ctx.scene.exitSub();
+			});
+
+		const parentScene = new Scene("parent-basic")
+			.step("message", async (ctx) => {
+				log.push({ scene: "parent", step: 0, firstTime: ctx.scene.step.firstTime });
+				if (ctx.scene.step.firstTime) return ctx.send("parent: enter name");
+				return ctx.scene.update({ name: "Alice" });
+			})
+			.step("message", async (ctx) => {
+				log.push({ scene: "parent", step: 1, firstTime: ctx.scene.step.firstTime });
+				if (ctx.scene.step.firstTime) return ctx.scene.enterSub(subScene);
+				return ctx.send("parent done");
+			});
+
+		const env = makeEnv([parentScene, subScene], async (ctx) => ctx.scene.enter(parentScene));
+		const user = env.createUser();
+
+		await user.sendMessage("start");  // parent step 0 firstTime=true → prompt
+		await user.sendMessage("name");   // parent step 0 false → update → parent step 1 firstTime=true → enterSub
+		await user.sendMessage("code");   // sub step 0 false → exitSub → parent step 1 firstTime=false
+
+		// Parent step 1 must have run with firstTime=false after exitSub
+		const parentStep1Entries = log.filter((e) => e.scene === "parent" && e.step === 1);
+		expect(parentStep1Entries.some((e) => !e.firstTime)).toBe(true);
+	});
+
+	it("exitSub(data) merges returnData into parent state", async () => {
+		let capturedState: any;
+
+		const subScene = new Scene("sub-merge")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.send("sub: enter");
+				return ctx.scene.exitSub({ phone: "+7999" });
+			});
+
+		const parentScene = new Scene("parent-merge")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.send("parent: enter name");
+				return ctx.scene.update({ name: "Alice" });
+			})
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.scene.enterSub(subScene);
+				capturedState = ctx.scene.state;
+				return ctx.send("done");
+			});
+
+		const env = makeEnv([parentScene, subScene], async (ctx) => ctx.scene.enter(parentScene));
+		const user = env.createUser();
+
+		await user.sendMessage("start");  // parent step 0 firstTime=true
+		await user.sendMessage("name");   // parent step 0 false → update → parent step 1 firstTime=true → enterSub
+		await user.sendMessage("code");   // sub step 0 false → exitSub({phone}) → parent step 1 firstTime=false
+
+		expect(capturedState).toMatchObject({ name: "Alice", phone: "+7999" });
+	});
+
+	it("N-level nesting: A → B → C, exitSub unwinds through the stack", async () => {
+		const order: string[] = [];
+
+		const sceneC = new Scene("scene-c-nested")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.send("c: prompt");
+				order.push("c-exiting");
+				return ctx.scene.exitSub({ fromC: true });
+			});
+
+		const sceneB = new Scene("scene-b-nested")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.scene.enterSub(sceneC);
+				order.push("b-resumed");
+				return ctx.scene.exitSub({ fromB: true });
+			});
+
+		const sceneA = new Scene("scene-a-nested")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) {
+					order.push("a-entering-sub");
+					return ctx.scene.enterSub(sceneB);
+				}
+				order.push("a-resumed");
+				return ctx.send("done");
+			});
+
+		const env = makeEnv(
+			[sceneA, sceneB, sceneC],
+			async (ctx) => ctx.scene.enter(sceneA),
+		);
+		const user = env.createUser();
+
+		await user.sendMessage("start");  // A step0 firstTime → enterSub(B) → B firstTime → enterSub(C) → C firstTime
+		await user.sendMessage("go");     // C step0 false → exitSub → B step0 false → exitSub → A step0 false
+
+		expect(order).toEqual(["a-entering-sub", "c-exiting", "b-resumed", "a-resumed"]);
+	});
+
+	it("exitSub without parentStack behaves like exit() — clears the scene", async () => {
+		const freeHandlerCount = { value: 0 };
+
+		const subScene = new Scene("sub-no-parent")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.send("sub: prompt");
+				return ctx.scene.exitSub(); // no parent → plain exit
+			});
+
+		const env = makeEnv([subScene], async (ctx) => {
+			freeHandlerCount.value++;
+			await ctx.scene.enter(subScene);
+		});
+		const user = env.createUser();
+
+		await user.sendMessage("start"); // free (+1) → enter sub
+		freeHandlerCount.value = 0;      // reset
+
+		await user.sendMessage("exit");  // sub step0 false → exitSub (no parent) → scene cleared
+		await user.sendMessage("after"); // no scene → free handler fires (+1)
+
+		expect(freeHandlerCount.value).toBe(1);
+	});
+
+	it("parent step.firstTime is false when resumed after exitSub", async () => {
+		let parentStepFirstTimeOnResume: boolean | undefined;
+
+		const subScene = new Scene("sub-firsttime-check")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.send("sub prompt");
+				return ctx.scene.exitSub();
+			});
+
+		const parentScene = new Scene("parent-firsttime-check")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.scene.enterSub(subScene);
+				parentStepFirstTimeOnResume = ctx.scene.step.firstTime;
+				return ctx.send("parent done");
+			});
+
+		const env = makeEnv(
+			[parentScene, subScene],
+			async (ctx) => ctx.scene.enter(parentScene),
+		);
+		const user = env.createUser();
+
+		await user.sendMessage("start");  // parent step 0 firstTime=true → enterSub(sub)
+		await user.sendMessage("sub-ans"); // sub step 0 firstTime=false → exitSub → parent step 0 firstTime=false
+
+		expect(parentStepFirstTimeOnResume).toBe(false);
+	});
+
+	it("entering an unregistered scene via enterSub throws a helpful error", async () => {
+		const unknownScene = new Scene("not-registered-sub");
+		const knownScene = new Scene("known-parent")
+			.step("message", async (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.scene.enterSub(unknownScene as any);
+			});
+
+		let error: Error | undefined;
+		const bot = new Bot("test_token").extend(scenes([knownScene] as any[]));
+		bot.on("message", async (ctx: any) => {
+			try {
+				await ctx.scene.enter(knownScene);
+			} catch (e) {
+				error = e as Error;
+			}
+		});
+
+		await new TelegramTestEnvironment(bot as any).createUser().sendMessage("hi");
+
+		expect(error?.message).toContain("not-registered-sub");
+	});
+});
+
 // ─── firstTime flag behaviour ─────────────────────────────────────────────────
 
 describe("firstTime flag", () => {

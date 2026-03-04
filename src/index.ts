@@ -128,6 +128,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				scene,
 				key,
 				allowedScenes,
+				scenes,
 			);
 
 			// @ts-ignore

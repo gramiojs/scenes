@@ -5,6 +5,7 @@ import type {
 	EnterExit,
 	InActiveSceneHandlerReturn,
 	InUnknownScene,
+	ParentSceneFrame,
 	PossibleInUnknownScene,
 	SceneEnterHandler,
 	SceneStepReturn,
@@ -23,6 +24,7 @@ export function getSceneEnter(
 	storage: ScenesStorage,
 	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
+	allScenes: AnyScene[],
 ): SceneEnterHandler {
 	return async (scene, ...args) => {
 		if (!allowedScenes.includes(scene.name))
@@ -48,6 +50,7 @@ export function getSceneEnter(
 			scene,
 			key,
 			allowedScenes,
+			allScenes,
 		);
 
 		await scene["~"].enter(context);
@@ -59,6 +62,120 @@ export function getSceneEnter(
 
 			await storage.set(key, { ...sceneData, firstTime: false });
 		});
+	};
+}
+
+export function getSceneEnterSub(
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
+	storage: ScenesStorage,
+	currentSceneData: ScenesStorageData,
+	key: `@gramio/scenes:${string | number}`,
+	allowedScenes: string[],
+	allScenes: AnyScene[],
+): SceneEnterHandler {
+	return async (subScene, ...args) => {
+		if (!allowedScenes.includes(subScene.name))
+			throw new Error(
+				`You should register this scene (${subScene.name}) in plugin options (scenes: ${allowedScenes.join(", ")})`,
+			);
+
+		const parentFrame: ParentSceneFrame = {
+			name: currentSceneData.name,
+			params: currentSceneData.params,
+			state: currentSceneData.state,
+			stepId: currentSceneData.stepId,
+			previousStepId: currentSceneData.previousStepId,
+			parentStack: currentSceneData.parentStack,
+		};
+
+		// Prevent scene.run()'s onNext from overwriting sub-scene storage
+		// (same pattern as getSceneExit)
+		currentSceneData.firstTime = false;
+
+		const subData: ScenesStorageData = {
+			name: subScene.name,
+			state: {},
+			params: args[0],
+			stepId: 0,
+			previousStepId: 0,
+			firstTime: true,
+			parentStack: [...(currentSceneData.parentStack ?? []), parentFrame],
+		};
+
+		await storage.set(key, subData);
+		context.scene = getInActiveSceneHandler(
+			context,
+			storage,
+			subData,
+			subScene,
+			key,
+			allowedScenes,
+			allScenes,
+		);
+
+		await subScene["~"].enter(context);
+
+		// @ts-expect-error
+		await subScene.compose(context, async () => {
+			const d = await storage.get(key);
+			if (!d) return;
+			await storage.set(key, { ...d, firstTime: false });
+		});
+	};
+}
+
+export function getSceneExitSub(
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
+	storage: ScenesStorage,
+	sceneData: ScenesStorageData,
+	key: `@gramio/scenes:${string | number}`,
+	allowedScenes: string[],
+	allScenes: AnyScene[],
+) {
+	return async (returnData?: Record<string, unknown>) => {
+		// Prevent scene.run()'s onNext from overwriting parent data
+		// (same pattern as getSceneExit)
+		sceneData.firstTime = false;
+
+		const stack = sceneData.parentStack;
+		if (!stack?.length) {
+			await storage.delete(key);
+			return;
+		}
+
+		const parentFrame = stack[stack.length - 1];
+		const remainingStack = stack.slice(0, -1);
+
+		const mergedState = returnData
+			? { ...(parentFrame.state as object), ...returnData }
+			: parentFrame.state;
+
+		const parentData: ScenesStorageData = {
+			name: parentFrame.name,
+			params: parentFrame.params,
+			state: mergedState,
+			stepId: parentFrame.stepId,
+			previousStepId: parentFrame.previousStepId,
+			firstTime: false,
+			parentStack: remainingStack.length > 0 ? remainingStack : undefined,
+		};
+
+		await storage.set(key, parentData);
+
+		const parentScene = allScenes.find((s) => s.name === parentFrame.name);
+		if (!parentScene) return;
+
+		context.scene = getInActiveSceneHandler(
+			context,
+			storage,
+			parentData,
+			parentScene,
+			key,
+			allowedScenes,
+			allScenes,
+		);
+		// @ts-expect-error
+		await parentScene.run(context, storage, key, parentData);
 	};
 }
 
@@ -91,7 +208,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
 
 	const enterExit = {
-		enter: getSceneEnter(context, storage, key, allowedScenes),
+		enter: getSceneEnter(context, storage, key, allowedScenes, scenes),
 		exit: () => storage.delete(key),
 	};
 
@@ -113,6 +230,7 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 			scene,
 			key,
 			allowedScenes,
+			scenes,
 		);
 	}
 
@@ -130,6 +248,7 @@ export function getInActiveSceneHandler<
 	scene: AnyScene,
 	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
+	allScenes: AnyScene[],
 ): InActiveSceneHandlerReturn<Params, State> {
 	const stepDerives = getStepDerives(
 		context,
@@ -138,6 +257,7 @@ export function getInActiveSceneHandler<
 		scene,
 		key,
 		allowedScenes,
+		allScenes,
 	);
 
 	return {
@@ -161,15 +281,38 @@ export function getInActiveSceneHandler<
 
 			return state;
 		},
-		enter: getSceneEnter(context, storage, key, allowedScenes),
+		enter: getSceneEnter(
+			context,
+			storage as ScenesStorage,
+			key,
+			allowedScenes,
+			allScenes,
+		),
 		exit: getSceneExit(storage, sceneData, key),
 		reenter: async () =>
 			getSceneEnter(
 				context,
-				storage,
+				storage as ScenesStorage,
 				key,
 				allowedScenes,
+				allScenes,
 			)(scene, sceneData.params),
+		enterSub: getSceneEnterSub(
+			context,
+			storage as ScenesStorage,
+			sceneData,
+			key,
+			allowedScenes,
+			allScenes,
+		),
+		exitSub: getSceneExitSub(
+			context,
+			storage as ScenesStorage,
+			sceneData,
+			key,
+			allowedScenes,
+			allScenes,
+		),
 	};
 }
 
@@ -180,6 +323,7 @@ export function getStepDerives(
 	scene: AnyScene,
 	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
+	allScenes: AnyScene[],
 ): SceneStepReturn {
 	async function go(stepId: number, firstTime = true) {
 		storageData.previousStepId = storageData.stepId;
@@ -195,6 +339,7 @@ export function getStepDerives(
 			scene,
 			key,
 			allowedScenes,
+			allScenes,
 		);
 		// @ts-expect-error
 		await scene.run(context, storage, key, storageData);
@@ -217,6 +362,7 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	scene: AnyScene,
 	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
+	allScenes: AnyScene[],
 ): InUnknownScene<Params, State> {
 	return {
 		...getInActiveSceneHandler(
@@ -226,6 +372,7 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 			scene,
 			key,
 			allowedScenes,
+			allScenes,
 		),
 		// @ts-expect-error
 		is: (scene) => scene.name === sceneData.name,
@@ -242,6 +389,7 @@ export function getPossibleInSceneHandlers<
 	scene: AnyScene,
 	key: `@gramio/scenes:${string | number}`,
 	allowedScenes: string[],
+	allScenes: AnyScene[],
 ): PossibleInUnknownScene<Params, State> {
 	return {
 		current: getInUnknownScene(
@@ -251,8 +399,9 @@ export function getPossibleInSceneHandlers<
 			scene,
 			key,
 			allowedScenes,
+			allScenes,
 		),
-		enter: getSceneEnter(context, storage, key, allowedScenes),
+		enter: getSceneEnter(context, storage, key, allowedScenes, allScenes),
 		exit: getSceneExit(storage, sceneData, key),
 		// @ts-expect-error PRIVATE KEY
 		"~": {
