@@ -1,5 +1,5 @@
 import { type Storage, inMemoryStorage } from "@gramio/storage";
-import { Composer, Plugin } from "gramio";
+import { Plugin } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
@@ -62,7 +62,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 		.filter(Boolean)
 		.join(":");
 
-	return new Composer({ name: pluginName }).derive(events, async (context) => {
+	return new Plugin(pluginName).derive(events, async (context) => {
 		if (withCurrentScene) {
 			// TODO: move getSceneHandlers.withCurrentScene here and avoid useless async next
 		}
