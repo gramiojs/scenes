@@ -290,14 +290,14 @@ export function getInActiveSceneHandler<
 			allScenes,
 		),
 		exit: getSceneExit(storage, sceneData, key),
-		reenter: async () =>
+		reenter: async (params) =>
 			getSceneEnter(
 				context,
 				storage as ScenesStorage,
 				key,
 				allowedScenes,
 				allScenes,
-			)(scene, sceneData.params),
+			)(scene, params ?? sceneData.params),
 		enterSub: getSceneEnterSub(
 			context,
 			storage as ScenesStorage,

@@ -79,6 +79,7 @@ export class Scene<
 							Derives["global"]["scene"],
 							{
 								params: SceneParams;
+								reenter: (params?: SceneParams) => Promise<void>;
 							}
 						>;
 					};

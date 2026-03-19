@@ -91,7 +91,7 @@ export interface InActiveSceneHandlerReturn<
 
 	step: SceneStepReturn;
 
-	reenter: () => Promise<void>;
+	reenter: (params?: Params) => Promise<void>;
 
 	enterSub: SceneEnterHandler;
 	exitSub: (returnData?: ExitData) => Promise<void>;
