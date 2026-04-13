@@ -17,6 +17,22 @@ export type ScenesStorage = Storage<
 
 export interface ScenesOptions {
 	storage?: ScenesStorage;
+	/**
+	 * Controls what happens to updates that arrive while the user is inside
+	 * a scene but do not match the current step (wrong update type, or no
+	 * step handler claims them).
+	 *
+	 * - `true` (default): non-matching updates fall through to the outer bot
+	 *   chain, so global handlers like `.command("cancel")` or `.on("message")`
+	 *   can still react. The scene's `firstTime` flag is preserved so the user
+	 *   does not lose their place.
+	 * - `false`: scenes greedily consume every update for the active user.
+	 *   Legacy behavior — useful if you intentionally want to isolate the user
+	 *   from outer handlers while a scene is active.
+	 *
+	 * @default true
+	 */
+	passthrough?: boolean;
 }
 
 export interface ParentSceneFrame {

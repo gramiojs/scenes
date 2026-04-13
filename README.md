@@ -320,6 +320,56 @@ bot.extend(scenes([registration, phoneVerification, captcha]));
 
 Trying to `enter` or `enterSub` a scene not in the list throws an error with the scene name.
 
+### Options
+
+```typescript
+bot.extend(
+    scenes([registration], {
+        storage: redisStorage({ /* ... */ }),
+        passthrough: true, // default
+    }),
+);
+```
+
+| Option        | Type          | Default           | Description                                                                 |
+| ------------- | ------------- | ----------------- | --------------------------------------------------------------------------- |
+| `storage`     | `Storage`     | `inMemoryStorage()` | Where scene state is persisted. See [Custom storage](#custom-storage).    |
+| `passthrough` | `boolean`     | `true`            | Whether updates that do not match the current step fall through to outer handlers. See below. |
+
+### Update passthrough
+
+By default, when a user is inside a scene and sends an update that the current step does not handle (e.g. a text message while the step is waiting for a `callback_query`, or `/cancel` while inside a form), that update **falls through** to the outer bot chain. This lets global commands and `.on()` handlers keep working during a scene:
+
+```typescript
+const form = new Scene("form")
+    .step("message", (ctx) => {
+        if (ctx.scene.step.firstTime) return ctx.send("Enter your name:");
+        return ctx.scene.update({ name: ctx.text });
+    })
+    .step("callback_query", (ctx) => {
+        if (ctx.scene.step.firstTime)
+            return ctx.send("Pick size:", { reply_markup: sizeKb });
+        return ctx.scene.update({ size: ctx.data });
+    });
+
+bot
+    .extend(scenes([form]))
+    .command("cancel", (ctx) => ctx.scene.exit())   // works even inside the scene
+    .command("help", (ctx) => ctx.send("Help text")) // works even inside the scene
+    .on("message", (ctx) => ctx.send("Please use the buttons above"));
+    //          ^ fires when a user types text during the callback_query step
+```
+
+When a fallthrough happens, the scene's `firstTime` flag is **preserved** — the user does not lose their place in the current step.
+
+Set `passthrough: false` to restore the legacy "greedy" behavior, where the scene consumes every update for the active user regardless of step match. This can be useful when you deliberately want to isolate a user inside the scene.
+
+```typescript
+bot.extend(scenes([form], { passthrough: false }));
+// Now /cancel, /help, and the .on("message") handler above
+// will NOT fire while the user is inside `form`.
+```
+
 ---
 
 ## `scenesDerives`

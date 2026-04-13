@@ -245,16 +245,17 @@ export class Scene<
 				throw new Error("You must specify handler as the second argument");
 
 			return this.use(async (context, next) => {
-				if (context.is(updateName) && context.scene.step.id === stepId)
-					return handler(context, next);
-
-				if (context.scene.step.id > stepId) return await next();
+				if (context.scene.step.id === stepId) {
+					if (context.is(updateName)) return handler(context, next);
+					return next();
+				}
+				return next();
 			});
 		}
 
 		return this.use(async (context, next) => {
 			if (context.scene.step.id === stepId) return updateName(context, next);
-			if (context.scene.step.id > stepId) return await next();
+			return next();
 		});
 	}
 
@@ -324,7 +325,16 @@ export class Scene<
 			[key: string]: unknown;
 		},
 		onNext?: () => unknown,
+		passthrough?: Next,
 	) {
+		let fellThrough = false;
+		const terminal: Next = passthrough
+			? async () => {
+					fellThrough = true;
+					return passthrough();
+				}
+			: noopNext;
+
 		// Cross-chain dedup: if a named Composer/Plugin was already applied in the
 		// bot's main chain (bot.extend(withUser)), skip it here so it doesn't run
 		// twice. The bot's extended-set is keyed as "<name>:<seed>" (e.g.
@@ -341,12 +351,12 @@ export class Scene<
 					return true;
 				})
 				.map((m) => m.fn);
-			await compose(fns)(context, noopNext);
+			await compose(fns)(context, terminal);
 		} else {
-			await this["~"].composer.run(context, noopNext);
+			await this["~"].composer.run(context, terminal);
 		}
 
-		onNext?.();
+		if (!fellThrough) onNext?.();
 	}
 
 	async run(
@@ -356,13 +366,16 @@ export class Scene<
 		storage: Storage,
 		key: string,
 		data: ScenesStorageData<unknown, unknown>,
+		passthrough?: Next,
 	) {
-		return this.compose(context, async () => {
-			// TODO: We should know is state edited or not?
-			
-			if (data.firstTime) {
-			    await storage.set(key, { ...data, firstTime: false });
-			}
-		});
+		return this.compose(
+			context,
+			async () => {
+				if (data.firstTime) {
+					await storage.set(key, { ...data, firstTime: false });
+				}
+			},
+			passthrough,
+		);
 	}
 }

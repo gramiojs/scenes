@@ -86,6 +86,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
+	const passthrough = options?.passthrough ?? true;
 	validateScenes(scenes);
 
 	const allowedScenes = scenes.map((x) => x.name);
@@ -131,8 +132,14 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				scenes,
 			);
 
-			// @ts-ignore
-			return scene.run(context, storage, key, sceneData);
+			return scene.run(
+				// @ts-ignore
+				context,
+				storage,
+				key,
+				sceneData,
+				passthrough ? next : undefined,
+			);
 		})
 		.derive(["message", "callback_query"], async (context) => {
 			return {
