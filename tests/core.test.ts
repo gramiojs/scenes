@@ -192,6 +192,29 @@ describe("Scene.params()", () => {
 				expectTypeOf(ctx.scene.state).toEqualTypeOf<{ name: string }>();
 			});
 	});
+
+	// https://github.com/gramiojs/scenes/issues/6
+	it("enter() enforces params shape at call site (issue #6)", () => {
+		const typed = new Scene("issue-6-typed").params<{ alpha: string }>();
+		const plain = new Scene("issue-6-plain");
+
+		const enter = {} as import("../src/types.js").SceneEnterHandler;
+
+		// When the scene declares .params<T>(), calling enter for that scene
+		// requires exactly [scene, params: T] — both arguments, with T enforced.
+		expectTypeOf(enter<typeof typed>).parameters.toEqualTypeOf<
+			[scene: typeof typed, params: { alpha: string }]
+		>();
+
+		// A scene without .params() resolves to just [scene] — no second arg.
+		expectTypeOf(enter<typeof plain>).parameters.toEqualTypeOf<
+			[scene: typeof plain]
+		>();
+
+		// Positive call-site checks.
+		expectTypeOf(enter).toBeCallableWith(typed, { alpha: "hi" });
+		expectTypeOf(enter).toBeCallableWith(plain);
+	});
 });
 
 // ─── State persistence ────────────────────────────────────────────────────────

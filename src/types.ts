@@ -53,7 +53,7 @@ export interface SceneUpdateState {
 	firstTime?: boolean;
 }
 
-export type SceneEnterHandler<Scene extends AnyScene = AnyScene> = (
+export type SceneEnterHandler = <Scene extends AnyScene>(
 	scene: Scene,
 	...args: Scene["~"]["params"] extends never
 		? []
