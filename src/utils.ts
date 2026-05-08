@@ -448,6 +448,12 @@ export function getPossibleInSceneHandlers<
 export function validateScenes(scenes: AnyScene[]): void {
 	const names = new Set<string>();
 	for (const scene of scenes) {
+		if (scene["~scene"]?.isModule || !scene.name) {
+			throw new Error(
+				"Cannot register an unnamed Scene (step module) directly. " +
+					"Pass it to scene.extend(module) to merge into a named scene instead.",
+			);
+		}
 		if (names.has(scene.name)) {
 			throw new Error(`Duplicate scene name detected: ${scene.name}`);
 		}

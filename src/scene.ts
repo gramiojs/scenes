@@ -69,10 +69,13 @@ export class Scene<
 	 * composer's own `~` slot remains untouched. */
 	"~scene": SceneInternals;
 
-	constructor(name: string) {
+	constructor(name?: string) {
 		// Pass scene name to composer for cross-bot extended-set dedup.
 		super({ name });
-		this.name = name;
+		// For step modules (no name) we keep a synthetic empty string for the
+		// public field — the `~scene.isModule` flag is the source of truth and
+		// `validateScenes` rejects modules at registration time.
+		this.name = name ?? "";
 		this["~scene"] = createSceneInternals(name);
 	}
 
@@ -144,6 +147,25 @@ export class Scene<
 
 	// ─── extend (overrides parent to re-type as Scene) ───
 
+	/** Merge another Scene's middlewares + lifecycle hooks + step list. */
+	extend<
+		UParams,
+		UErrors extends ErrorDefinitions,
+		UState extends StateTypesDefault,
+		UDerives extends SceneDerivesDefinitions<UParams, UState, any>,
+	>(
+		scene: Scene<UParams, UErrors, UState, UDerives>,
+	): Scene<
+		Params,
+		Errors & UErrors,
+		Record<string, never> extends State
+			? UState
+			: Record<string, never> extends UState
+				? State
+				: State & UState,
+		Derives & UDerives
+	>;
+
 	extend<UExposed extends object, UDerives extends Record<string, object>>(
 		composer: EventComposer<any, any, any, any, UExposed, UDerives, any>,
 	): Scene<
@@ -163,14 +185,51 @@ export class Scene<
 		Derives & NewPlugin["_"]["Derives"]
 	>;
 
-	extend(
-		pluginOrComposer:
-			| AnyPlugin
-			| EventComposer<any, any, any, any, any, any, any>,
-	): this {
-		// Delegate to the inherited composer.extend(); cross-bot dedup is
-		// handled internally via this["~"].extended.
-		(super.extend as (arg: unknown) => unknown)(pluginOrComposer);
+	extend(other: any): this {
+		// Detect: is this another Scene? Look for the dedicated `~scene` slot
+		// (set in our constructor; not present on plain Plugin / Composer).
+		const isScene =
+			other != null &&
+			typeof other === "object" &&
+			"~scene" in other &&
+			other["~scene"] != null;
+
+		// Always delegate to the inherited composer.extend() first — this merges
+		// middlewares, derives, macros, errors, and tracked plugins.
+		(super.extend as (arg: unknown) => unknown)(other);
+
+		if (!isScene) return this;
+
+		// Scene-specific merge: builder steps + lifecycle hooks.
+		const otherInternals = (other as Scene<any, any, any, any>)["~scene"];
+
+		for (const entry of otherInternals.steps) {
+			let newId: string | number;
+			if (typeof entry.id === "number") {
+				// Renumber to keep numeric ids unique across the merged scene.
+				newId = this.stepsCount++;
+			} else {
+				// Named ids must not collide.
+				for (const existing of this["~scene"].steps) {
+					if (existing.id === entry.id) {
+						throw new Error(
+							`scene.extend: step "${entry.id}" already exists in scene "${this.name || "<module>"}"`,
+						);
+					}
+				}
+				newId = entry.id;
+			}
+			this["~scene"].steps.push({ ...entry, id: newId });
+		}
+
+		// onEnter / onExit: A wins; copy B's only if A has none.
+		if (!this["~scene"].enter && otherInternals.enter) {
+			this["~scene"].enter = otherInternals.enter;
+		}
+		if (!this["~scene"].exit && otherInternals.exit) {
+			this["~scene"].exit = otherInternals.exit;
+		}
+
 		return this;
 	}
 
@@ -453,8 +512,24 @@ export class Scene<
 		const sceneSteps = this["~scene"].steps;
 		const stepEntry = sceneSteps.find((s) => s.id === data.stepId);
 
-		// Builder step on first entry: run message + enter, mark firstTime=false, done.
+		// Builder step on first entry: apply derives/decorates so ctx is populated,
+		// run message + enter, mark firstTime=false, done.
 		if (stepEntry && data.firstTime) {
+			// Apply only ctx-mutating middleware (derive/decorate) from both the
+			// scene-level chain and the step's own chain. We deliberately skip
+			// regular handlers (.use/.on/.command/...) on first entry — they
+			// match incoming events on subsequent updates, not on entry.
+			const stepComposer = stepEntry.composer as StepComposerInstance;
+			const setupFns = [
+				...this["~"].middlewares
+					.filter((m) => m.type === "derive" || m.type === "decorate")
+					.map((m) => m.fn),
+				...stepComposer["~"].middlewares
+					.filter((m) => m.type === "derive" || m.type === "decorate")
+					.map((m) => m.fn),
+			];
+			if (setupFns.length) await compose(setupFns)(context, noopNext);
+
 			if (stepEntry.message !== undefined) {
 				const text =
 					typeof stepEntry.message === "function"
