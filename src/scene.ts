@@ -235,6 +235,16 @@ export class Scene<
 
 	// ─── Lifecycle ───
 
+	/**
+	 * Register a handler that runs once when the user enters the scene.
+	 *
+	 * Fires AFTER `context.scene` is built but BEFORE the scene's middleware
+	 * chain runs — meaning scene-level `.derive()` / `.decorate()` results are
+	 * **not yet available** on `ctx`. If you need derived data in onEnter,
+	 * use `.decorate()` (its values are static and exist before middleware
+	 * runs) or move the logic into the first step's `.enter()` (which fires
+	 * after derives have applied).
+	 */
 	onEnter(
 		handler: (context: ContextType<Bot, "message"> & Derives["global"]) => unknown,
 	) {
@@ -534,8 +544,9 @@ export class Scene<
 		const stepEntry = sceneSteps.find((s) => s.id === data.stepId);
 
 		// Builder step on first entry: apply derives/decorates/guards so ctx is
-		// populated and access checks fire, then run message + enter, mark
-		// firstTime=false, done.
+		// populated and access checks fire, then run step's message + enter,
+		// mark firstTime=false, done. Scene-level onEnter has already fired in
+		// getSceneEnter (or getSceneEnterSub) — outside this dispatch path.
 		if (stepEntry && data.firstTime) {
 			// Apply ctx-mutating + access-checking middleware (derive/decorate/
 			// guard) from both the scene-level chain and the step's own chain.

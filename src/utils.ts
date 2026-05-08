@@ -57,7 +57,6 @@ export function getSceneEnter(
 
 		await scene["~scene"].enter?.(context);
 
-		// Run the active step (builder mode) or the legacy gated chain.
 		await scene.dispatchActive(context as any, storage, key, sceneParams);
 	};
 }
