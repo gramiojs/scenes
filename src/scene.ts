@@ -533,23 +533,44 @@ export class Scene<
 		const sceneSteps = this["~scene"].steps;
 		const stepEntry = sceneSteps.find((s) => s.id === data.stepId);
 
-		// Builder step on first entry: apply derives/decorates so ctx is populated,
-		// run message + enter, mark firstTime=false, done.
+		// Builder step on first entry: apply derives/decorates/guards so ctx is
+		// populated and access checks fire, then run message + enter, mark
+		// firstTime=false, done.
 		if (stepEntry && data.firstTime) {
-			// Apply only ctx-mutating middleware (derive/decorate) from both the
-			// scene-level chain and the step's own chain. We deliberately skip
-			// regular handlers (.use/.on/.command/...) on first entry — they
-			// match incoming events on subsequent updates, not on entry.
+			// Apply ctx-mutating + access-checking middleware (derive/decorate/
+			// guard) from both the scene-level chain and the step's own chain.
+			// We deliberately skip regular handlers (.use/.on/.command/...) on
+			// first entry — they'd match the entry update (e.g. /start) and
+			// produce double-fires.
 			const stepComposer = stepEntry.composer as StepComposerInstance;
+			// Run setup middleware on first entry: derive/decorate (ctx mutators)
+			// + guard (access checks). A failing guard calls its fail middleware
+			// (or just stops in gate mode) and does NOT call next() — proceed
+			// stays false, and we skip message/enter so the scene doesn't fully
+			// open. Regular handlers (.use/.on/.command/...) are deliberately
+			// skipped on first entry so they don't double-fire on the trigger
+			// update (e.g. /start).
+			const setupTypes = new Set(["derive", "decorate", "guard"]);
 			const setupFns = [
 				...this["~"].middlewares
-					.filter((m) => m.type === "derive" || m.type === "decorate")
+					.filter((m) => setupTypes.has(m.type))
 					.map((m) => m.fn),
 				...stepComposer["~"].middlewares
-					.filter((m) => m.type === "derive" || m.type === "decorate")
+					.filter((m) => setupTypes.has(m.type))
 					.map((m) => m.fn),
 			];
-			if (setupFns.length) await compose(setupFns)(context, noopNext);
+			let proceed = setupFns.length === 0;
+			if (setupFns.length) {
+				await compose(setupFns)(context, async () => {
+					proceed = true;
+				});
+			}
+			if (!proceed) {
+				// A guard (or other setup middleware) stopped the chain — don't
+				// run message/enter, don't flip firstTime. The user is not yet
+				// in the step, semantically.
+				return;
+			}
 
 			if (stepEntry.message !== undefined) {
 				const text =
@@ -606,23 +627,33 @@ export class Scene<
 		const stepComposer = stepEntry.composer as StepComposerInstance;
 		const stepFns = stepComposer["~"].middlewares.map((m) => m.fn);
 
-		let stepHandled = false;
-
-		// Combined chain: scene middleware → wrapper that runs step middleware.
+		// Combined chain: scene middleware → wrapper that runs the step's own
+		// middleware then routes the result.
+		//
+		// Routing rules when the step chain falls through (no handler claimed
+		// the update):
+		//   • step has .fallback → invoke it; do NOT propagate further
+		//   • no .fallback        → call `next()` (terminal / outer-bot chain)
+		// When the step chain takes ownership (a handler matched), do nothing.
 		const combined = [
 			...sceneFns,
 			async (c: any, next: Next) => {
+				let chainFellThrough = false;
 				await compose(stepFns)(c, async () => {
-					stepHandled = true;
+					chainFellThrough = true;
 				});
-				return next();
+
+				if (!chainFellThrough) return; // step handler took ownership
+
+				if (stepEntry.fallback) {
+					await stepEntry.fallback(c, noopNext);
+					return; // fallback consumed the update
+				}
+
+				return next(); // propagate to terminal / outer chain
 			},
 		];
 
 		await compose(combined)(context, terminal);
-
-		if (!stepHandled && stepEntry.fallback && !fellThrough) {
-			await stepEntry.fallback(context, noopNext);
-		}
 	}
 }
