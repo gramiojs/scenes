@@ -52,6 +52,14 @@ export interface ScenesStorageData<Params = any, State = any> {
 	previousStepId: string | number;
 	firstTime: boolean;
 	parentStack?: ParentSceneFrame[];
+	/**
+	 * `true` once `scene.onEnter` has fired for this occupancy of the scene.
+	 * Used to distinguish "scene first entry" (fire onEnter) from "step
+	 * transition with firstTime=true" (don't re-fire onEnter). Defaults to
+	 * `false` on initial entry and is set `true` by dispatchActive after
+	 * onEnter runs.
+	 */
+	entered?: boolean;
 }
 
 // type ExtractedReturn<Return, State> = Return extends UpdateData<infer Type>

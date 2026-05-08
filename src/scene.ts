@@ -238,12 +238,16 @@ export class Scene<
 	/**
 	 * Register a handler that runs once when the user enters the scene.
 	 *
-	 * Fires AFTER `context.scene` is built but BEFORE the scene's middleware
-	 * chain runs — meaning scene-level `.derive()` / `.decorate()` results are
-	 * **not yet available** on `ctx`. If you need derived data in onEnter,
-	 * use `.decorate()` (its values are static and exist before middleware
-	 * runs) or move the logic into the first step's `.enter()` (which fires
-	 * after derives have applied).
+	 * Fires AFTER scene-level `.derive()` / `.decorate()` middleware has
+	 * applied — so derived ctx fields (`ctx.user`, etc.) ARE available. Fires
+	 * exactly once per scene occupancy: `step.go(...)` transitions don't
+	 * re-trigger it.
+	 *
+	 * @example
+	 * new Scene("checkout")
+	 *   .derive(async ctx => ({ user: await db.users.find(ctx.from!.id) }))
+	 *   .onEnter(ctx => analytics.track("checkout_start", { userId: ctx.user.id }))
+	 *   .step("review", c => c.message("Order looks good?").on("message", ...))
 	 */
 	onEnter(
 		handler: (context: ContextType<Bot, "message"> & Derives["global"]) => unknown,
@@ -544,9 +548,9 @@ export class Scene<
 		const stepEntry = sceneSteps.find((s) => s.id === data.stepId);
 
 		// Builder step on first entry: apply derives/decorates/guards so ctx is
-		// populated and access checks fire, then run step's message + enter,
-		// mark firstTime=false, done. Scene-level onEnter has already fired in
-		// getSceneEnter (or getSceneEnterSub) — outside this dispatch path.
+		// populated and access checks fire, fire scene.onEnter on the very
+		// first scene-entry (not on subsequent step.go() transitions), then
+		// run step's message + enter, mark firstTime=false, done.
 		if (stepEntry && data.firstTime) {
 			// Apply ctx-mutating + access-checking middleware (derive/decorate/
 			// guard) from both the scene-level chain and the step's own chain.
@@ -583,6 +587,13 @@ export class Scene<
 				return;
 			}
 
+			// Fire scene-level onEnter exactly once per scene occupancy. The
+			// `entered` flag prevents re-fire on step.go(...) transitions where
+			// firstTime is also true.
+			if (!data.entered && this["~scene"].enter) {
+				await this["~scene"].enter(context);
+			}
+
 			if (stepEntry.message !== undefined) {
 				const text =
 					typeof stepEntry.message === "function"
@@ -593,18 +604,42 @@ export class Scene<
 			if (stepEntry.enter) {
 				await stepEntry.enter(context, noopNext);
 			}
-			await storage.set(key, { ...data, firstTime: false });
+			await storage.set(key, { ...data, firstTime: false, entered: true });
 			return;
 		}
 
 		// No builder step at this id → legacy mode: run the whole scene composer.
 		// (Legacy steps register themselves as gated `.use()` middleware on `this`.)
+		//
+		// For onEnter to see scene-level derives, we'd need to run derives FIRST
+		// then call onEnter. But the legacy chain interleaves derives + handlers
+		// in registration order, so we can't isolate "just the derives" without
+		// running handlers too. As a compromise, fire onEnter inside the
+		// dispatch chain via a short-circuit wrapper that runs derive/decorate
+		// middleware first, then onEnter, then resumes the rest of the chain.
 		if (!stepEntry) {
+			const fireOnEnter = !data.entered && this["~scene"].enter;
+
+			if (fireOnEnter) {
+				const setupTypes = new Set(["derive", "decorate"]);
+				const setupFns = this["~"].middlewares
+					.filter((m) => setupTypes.has(m.type))
+					.map((m) => m.fn);
+				if (setupFns.length) {
+					await compose(setupFns)(context, noopNext);
+				}
+				await this["~scene"].enter!(context);
+			}
+
 			return this.dispatch(
 				context,
 				async () => {
 					if (data.firstTime) {
-						await storage.set(key, { ...data, firstTime: false });
+						await storage.set(key, {
+							...data,
+							firstTime: false,
+							entered: true,
+						});
 					}
 				},
 				passthrough,

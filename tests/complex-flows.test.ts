@@ -20,12 +20,12 @@ describe("complex flows: realistic scenarios", () => {
 				}),
 		);
 
-		const analytics = { track: (e: string) => log.push(`track:${e}`) };
-
 		const onboarding = new Scene("onboarding")
-			.decorate({ analytics })
-			.onEnter(() => analytics.track("onboarding_start"))
-			.onExit(() => analytics.track("onboarding_end"))
+			.derive(() => ({
+				analytics: { track: (e: string) => log.push(`track:${e}`) },
+			}))
+			.onEnter((ctx: any) => ctx.analytics.track("onboarding_start"))
+			.onExit((ctx: any) => ctx.analytics.track("onboarding_end"))
 			.step("name", (c) =>
 				c
 					.enter((ctx) => {

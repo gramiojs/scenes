@@ -191,6 +191,66 @@ describe("Scene IS an EventComposer — full DSL on Scene", () => {
 		expect(seen).toEqual(["extra-mw", "entered"]);
 	});
 
+	it("scene.derive() result is visible in scene.onEnter", async () => {
+		const seen: string[] = [];
+
+		const flow = new Scene("flow")
+			.derive(() => ({ user: { id: 42 } }))
+			.onEnter((ctx: any) => {
+				seen.push(`onEnter:user.id=${ctx.user.id}`);
+			})
+			.step("only", (c) =>
+				c.enter((ctx: any) => {
+					seen.push(`step.enter:user.id=${ctx.user.id}`);
+					return ctx.scene.exit();
+				}),
+			);
+
+		const bot = new Bot("test_token")
+			.extend(scenes([flow] as any[]))
+			.command("start", (ctx) => ctx.scene.enter(flow));
+
+		const env = new TelegramTestEnvironment(bot as any);
+		await env.createUser().sendCommand("start");
+
+		expect(seen).toEqual([
+			"onEnter:user.id=42",
+			"step.enter:user.id=42",
+		]);
+	});
+
+	it("scene.onEnter fires once on scene entry, not on step.go() transitions", async () => {
+		let enterCount = 0;
+
+		const flow = new Scene("flow")
+			.onEnter(() => {
+				enterCount++;
+			})
+			.step("a", (c) =>
+				c
+					.enter((ctx) => ctx.send("a"))
+					.on("message", (ctx) => ctx.scene.step.go("b")),
+			)
+			.step("b", (c) =>
+				c
+					.enter((ctx) => ctx.send("b"))
+					.on("message", (ctx) => ctx.scene.exit()),
+			);
+
+		const bot = new Bot("test_token")
+			.extend(scenes([flow] as any[]))
+			.command("start", (ctx) => ctx.scene.enter(flow));
+
+		const env = new TelegramTestEnvironment(bot as any);
+		const user = env.createUser();
+
+		await user.sendCommand("start"); // → onEnter fires
+		await user.sendMessage("→b"); // → step.go("b"); onEnter does NOT fire again
+		await user.sendMessage("done");
+
+		expect(enterCount).toBe(1);
+	});
+
 	it("scene.extend(plugin) brings plugin derives into step ctx (firstTime)", async () => {
 		const seen: string[] = [];
 

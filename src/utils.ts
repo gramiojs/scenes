@@ -43,6 +43,7 @@ export function getSceneEnter(
 			stepId: initialStepId,
 			previousStepId: initialStepId,
 			firstTime: true,
+			entered: false,
 		};
 		await storage.set(key, sceneParams);
 		context.scene = getInActiveSceneHandler(
@@ -55,8 +56,9 @@ export function getSceneEnter(
 			allScenes,
 		);
 
-		await scene["~scene"].enter?.(context);
-
+		// onEnter is fired by dispatchActive after derive/decorate/guard run, so
+		// derived ctx fields (ctx.user etc.) are visible to it. The `entered`
+		// flag in storage prevents re-firing on subsequent step transitions.
 		await scene.dispatchActive(context as any, storage, key, sceneParams);
 	};
 }
@@ -96,6 +98,7 @@ export function getSceneEnterSub(
 			stepId: initialStepId,
 			previousStepId: initialStepId,
 			firstTime: true,
+			entered: false,
 			parentStack: [...(currentSceneData.parentStack ?? []), parentFrame],
 		};
 
@@ -109,8 +112,6 @@ export function getSceneEnterSub(
 			allowedScenes,
 			allScenes,
 		);
-
-		await subScene["~scene"].enter?.(context);
 
 		await subScene.dispatchActive(context as any, storage, key, subData);
 	};
