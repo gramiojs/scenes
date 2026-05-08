@@ -242,6 +242,20 @@ export class Scene<
 		return this;
 	}
 
+	/**
+	 * Register a handler that runs when the user leaves this scene — on
+	 * `ctx.scene.exit()`, `ctx.scene.exitSub()` (the sub-scene exits), and
+	 * `ctx.scene.reenter()` (the prior occupancy of this scene ends before
+	 * re-entry). Symmetric to `.onEnter`. Useful for cleanup, analytics,
+	 * "thanks for completing" messages.
+	 */
+	onExit(
+		handler: (context: ContextType<Bot, "message"> & Derives["global"]) => unknown,
+	) {
+		this["~scene"].exit = handler as (ctx: any) => unknown;
+		return this;
+	}
+
 	// ─── Step API ───
 	//
 	// Three forms:

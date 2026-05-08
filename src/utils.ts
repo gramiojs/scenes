@@ -119,6 +119,7 @@ export function getSceneEnterSub(
 
 export function getSceneExitSub(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
+	currentScene: AnyScene,
 	storage: ScenesStorage,
 	sceneData: ScenesStorageData,
 	key: `@gramio/scenes:${string | number}`,
@@ -126,6 +127,9 @@ export function getSceneExitSub(
 	allScenes: AnyScene[],
 ) {
 	return async (returnData?: Record<string, unknown>) => {
+		// Fire onExit on the sub-scene that's leaving, before merging back up
+		await currentScene["~scene"]?.exit?.(context);
+
 		// Prevent scene.run()'s onNext from overwriting parent data
 		// (same pattern as getSceneExit)
 		sceneData.firstTime = false;
@@ -177,11 +181,15 @@ export function getSceneExitSub(
 }
 
 export function getSceneExit(
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
+	scene: AnyScene,
 	storage: Storage,
 	sceneData: ScenesStorageData,
 	key: `@gramio/scenes:${string | number}`,
 ) {
-	return () => {
+	return async () => {
+		// Fire scene.onExit hook before tearing down storage
+		await scene["~scene"]?.exit?.(context);
 		// TODO: do it smarter. for now it fix overrides of scene exit
 		sceneData.firstTime = false;
 
@@ -287,15 +295,18 @@ export function getInActiveSceneHandler<
 			allowedScenes,
 			allScenes,
 		),
-		exit: getSceneExit(storage, sceneData, key),
-		reenter: async (params) =>
-			getSceneEnter(
+		exit: getSceneExit(context, scene, storage, sceneData, key),
+		reenter: async (params) => {
+			// Fire onExit before re-entering — semantically the prior occupancy ends.
+			await scene["~scene"]?.exit?.(context);
+			return getSceneEnter(
 				context,
 				storage as ScenesStorage,
 				key,
 				allowedScenes,
 				allScenes,
-			)(scene, params ?? sceneData.params),
+			)(scene, params ?? sceneData.params);
+		},
 		enterSub: getSceneEnterSub(
 			context,
 			storage as ScenesStorage,
@@ -306,6 +317,7 @@ export function getInActiveSceneHandler<
 		),
 		exitSub: getSceneExitSub(
 			context,
+			scene,
 			storage as ScenesStorage,
 			sceneData,
 			key,
@@ -437,7 +449,7 @@ export function getPossibleInSceneHandlers<
 			allScenes,
 		),
 		enter: getSceneEnter(context, storage, key, allowedScenes, allScenes),
-		exit: getSceneExit(storage, sceneData, key),
+		exit: getSceneExit(context, scene, storage, sceneData, key),
 		// @ts-expect-error PRIVATE KEY
 		"~": {
 			data: sceneData,
