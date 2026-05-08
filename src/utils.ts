@@ -35,12 +35,13 @@ export function getSceneEnter(
 				)})`,
 			);
 
+		const initialStepId = scene["~scene"]?.steps?.[0]?.id ?? 0;
 		const sceneParams: ScenesStorageData = {
 			name: scene.name,
 			state: {},
 			params: args[0],
-			stepId: 0,
-			previousStepId: 0,
+			stepId: initialStepId,
+			previousStepId: initialStepId,
 			firstTime: true,
 		};
 		await storage.set(key, sceneParams);
@@ -56,13 +57,8 @@ export function getSceneEnter(
 
 		await scene["~scene"].enter?.(context);
 
-		// @ts-expect-error
-		await scene.dispatch(context, async () => {
-			const sceneData = await storage.get(key);
-			if (!sceneData) return;
-
-			await storage.set(key, { ...sceneData, firstTime: false });
-		});
+		// Run the active step (builder mode) or the legacy gated chain.
+		await scene.dispatchActive(context as any, storage, key, sceneParams);
 	};
 }
 
@@ -93,12 +89,13 @@ export function getSceneEnterSub(
 		// (same pattern as getSceneExit)
 		currentSceneData.firstTime = false;
 
+		const initialStepId = subScene["~scene"]?.steps?.[0]?.id ?? 0;
 		const subData: ScenesStorageData = {
 			name: subScene.name,
 			state: {},
 			params: args[0],
-			stepId: 0,
-			previousStepId: 0,
+			stepId: initialStepId,
+			previousStepId: initialStepId,
 			firstTime: true,
 			parentStack: [...(currentSceneData.parentStack ?? []), parentFrame],
 		};
@@ -116,12 +113,7 @@ export function getSceneEnterSub(
 
 		await subScene["~scene"].enter?.(context);
 
-		// @ts-expect-error
-		await subScene.dispatch(context, async () => {
-			const d = await storage.get(key);
-			if (!d) return;
-			await storage.set(key, { ...d, firstTime: false });
-		});
+		await subScene.dispatchActive(context as any, storage, key, subData);
 	};
 }
 
@@ -355,11 +347,33 @@ export function getStepDerives(
 	}
 
 	function relativeStep(delta: 1 | -1, op: "next" | "previous"): Promise<void> {
-		// Named step ids will be walked via the sceneSteps array in step 6.
-		// For now, only numeric stepIds support relative navigation.
+		// Builder mode: walk `~scene.steps` by index — supports named ids.
+		const sceneSteps = scene["~scene"]?.steps ?? [];
+		if (sceneSteps.length > 0) {
+			const idx = sceneSteps.findIndex((s) => s.id === storageData.stepId);
+			if (idx === -1) {
+				// Current step lives outside the builder array (legacy gated middleware).
+				// Fall through to numeric arithmetic below.
+				if (typeof storageData.stepId === "number") {
+					return go(storageData.stepId + delta);
+				}
+				throw new Error(
+					`scene.step.${op}(): cannot find current step "${storageData.stepId}" in scene "${scene.name}"`,
+				);
+			}
+			const targetIdx = idx + delta;
+			if (targetIdx < 0 || targetIdx >= sceneSteps.length) {
+				throw new Error(
+					`scene.step.${op}(): no ${op} step from "${storageData.stepId}" in scene "${scene.name}"`,
+				);
+			}
+			return go(sceneSteps[targetIdx]!.id);
+		}
+
+		// Legacy mode: numeric arithmetic.
 		if (typeof storageData.stepId !== "number") {
 			throw new Error(
-				`scene.step.${op}() does not yet support named step ids. ` +
+				`scene.step.${op}() does not yet support named step ids without a step builder. ` +
 					`Use scene.step.go("name") to jump to a named step.`,
 			);
 		}

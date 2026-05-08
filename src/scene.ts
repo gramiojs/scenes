@@ -18,6 +18,12 @@ import {
 } from "gramio";
 import { createSceneInternals, type SceneInternals } from "./scene-internals.js";
 import { SceneComposerBase } from "./scene-composer.js";
+import {
+	StepComposer,
+	type StepComposerInstance,
+	buildStepEntry,
+} from "./step-composer.js";
+import { events as KNOWN_EVENTS } from "./utils.js";
 import type {
 	Modify,
 	ScenesStorageData,
@@ -177,9 +183,30 @@ export class Scene<
 		return this;
 	}
 
-	// ─── Step API (legacy overloads only — builder API lands in step 6) ───
+	// ─── Step API ───
+	//
+	// Three forms:
+	//   1. Builder, numeric:  scene.step(c => c.enter(...).on("message", ...))
+	//   2. Builder, named:    scene.step("intro", c => c.enter(...).on("message", ...))
+	//   3. Legacy:            scene.step("message", (ctx, next) => ...) — preserved
+	//                          scene.step(["message", "callback_query"], handler)
+	//
+	// Disambiguation: first arg in `KNOWN_EVENTS` (or array) → legacy event-filter.
+	// Otherwise the first string is treated as a step name (builder form).
 
-	// @ts-expect-error
+	/** Builder, numeric step id (autoincrement) */
+	step(
+		builder: (c: StepComposerInstance) => StepComposerInstance | void,
+	): this;
+
+	/** Builder, named step id */
+	step(
+		name: string,
+		builder: (c: StepComposerInstance) => StepComposerInstance | void,
+	): this;
+
+	/** Legacy event-filtered step */
+	// @ts-expect-error overload signature
 	step<
 		T extends UpdateName,
 		Handler extends StepHandler<
@@ -221,29 +248,91 @@ export class Scene<
 			}
 		>
 	>;
-	step(handler: Handler<Context<Bot> & Derives["global"]>): this;
-	step<T extends UpdateName>(
-		updateName: MaybeArray<T> | Handler<Context<Bot> & Derives["global"]>,
-		handler?: Handler<Context<Bot> & Derives["global"]>,
-	) {
-		const stepId = this.stepsCount++;
-		if (Array.isArray(updateName) || typeof updateName === "string") {
-			if (!handler)
-				throw new Error("You must specify handler as the second argument");
 
-			return this.use(async (context: any, next: any) => {
-				if (context.scene.step.id === stepId) {
-					if (context.is(updateName)) return handler(context, next);
-					return next();
-				}
-				return next();
-			});
+	step(...args: any[]): this {
+		// 1-arg form: builder function (numeric id)
+		if (args.length === 1) {
+			const [arg] = args;
+			if (typeof arg === "function") {
+				return this._registerBuilderStep(this.stepsCount++, arg);
+			}
+			throw new Error(
+				"scene.step() with one argument requires a builder function: scene.step(c => c.enter(...))",
+			);
 		}
 
-		return this.use(async (context: any, next: any) => {
-			if (context.scene.step.id === stepId) return updateName(context, next);
+		// 2-arg form: legacy event-filter or named builder
+		if (args.length === 2) {
+			const [first, second] = args;
+			if (typeof second !== "function")
+				throw new Error("scene.step() second argument must be a function");
+
+			// Array first arg → legacy event-filter
+			if (Array.isArray(first)) {
+				return this._registerLegacyEventStep(
+					this.stepsCount++,
+					first,
+					second,
+				);
+			}
+
+			if (typeof first === "string") {
+				// Reserved event name → legacy event-filter (back-compat)
+				if ((KNOWN_EVENTS as readonly string[]).includes(first)) {
+					return this._registerLegacyEventStep(
+						this.stepsCount++,
+						first as UpdateName,
+						second,
+					);
+				}
+				// Otherwise treat string as a step NAME (builder form)
+				return this._registerBuilderStep(first, second);
+			}
+		}
+
+		throw new Error(
+			"Invalid scene.step() arguments — expected (builder), (name, builder), or (event(s), handler)",
+		);
+	}
+
+	/** @internal Register a builder-style step: creates a fresh StepComposer,
+	 * runs the user's builder against it, and stores the entry on `~scene.steps`. */
+	private _registerBuilderStep(
+		id: string | number,
+		builder: (c: StepComposerInstance) => StepComposerInstance | void,
+	): this {
+		// Named-step collision check (for explicit string ids)
+		if (typeof id === "string") {
+			for (const existing of this["~scene"].steps) {
+				if (existing.id === id) {
+					throw new Error(
+						`scene.step("${id}", ...): a step with id "${id}" already exists in scene "${this.name}"`,
+					);
+				}
+			}
+		}
+
+		const stepComposer = new StepComposer() as StepComposerInstance;
+		builder(stepComposer);
+		this["~scene"].steps.push(buildStepEntry(id, stepComposer));
+		return this;
+	}
+
+	/** @internal Register a legacy event-filtered step as a gated `.use()`
+	 * middleware. Preserved for back-compat with the original `.step("message", ctx => ...)` API. */
+	private _registerLegacyEventStep(
+		stepId: string | number,
+		updateName: MaybeArray<UpdateName>,
+		handler: (ctx: any, next: any) => unknown,
+	): this {
+		this.use(async (context: any, next: any) => {
+			if (context.scene?.step?.id === stepId) {
+				if (context.is(updateName)) return handler(context, next);
+				return next();
+			}
 			return next();
 		});
+		return this;
 	}
 
 	ask<
@@ -361,14 +450,83 @@ export class Scene<
 		data: ScenesStorageData<unknown, unknown>,
 		passthrough?: Next,
 	) {
-		return this.dispatch(
-			context,
-			async () => {
-				if (data.firstTime) {
-					await storage.set(key, { ...data, firstTime: false });
+		const sceneSteps = this["~scene"].steps;
+		const stepEntry = sceneSteps.find((s) => s.id === data.stepId);
+
+		// Builder step on first entry: run message + enter, mark firstTime=false, done.
+		if (stepEntry && data.firstTime) {
+			if (stepEntry.message !== undefined) {
+				const text =
+					typeof stepEntry.message === "function"
+						? await stepEntry.message(context)
+						: stepEntry.message;
+				await (context as any).send(text);
+			}
+			if (stepEntry.enter) {
+				await stepEntry.enter(context, noopNext);
+			}
+			await storage.set(key, { ...data, firstTime: false });
+			return;
+		}
+
+		// No builder step at this id → legacy mode: run the whole scene composer.
+		// (Legacy steps register themselves as gated `.use()` middleware on `this`.)
+		if (!stepEntry) {
+			return this.dispatch(
+				context,
+				async () => {
+					if (data.firstTime) {
+						await storage.set(key, { ...data, firstTime: false });
+					}
+				},
+				passthrough,
+			);
+		}
+
+		// Builder step, subsequent update: scene-level chain → step composer chain.
+		let fellThrough = false;
+		const terminal: Next = passthrough
+			? async () => {
+					fellThrough = true;
+					return passthrough();
 				}
+			: noopNext;
+
+		// Cross-bot dedup on the scene-level chain (same logic as dispatch()).
+		const botExtended = context.bot?.updates?.composer?.["~"]?.extended;
+		const sceneFns =
+			botExtended?.size
+				? this["~"].middlewares
+						.filter((m) => {
+							if (!m.plugin) return true;
+							for (const k of botExtended) {
+								if (k.startsWith(`${m.plugin}:`)) return false;
+							}
+							return true;
+						})
+						.map((m) => m.fn)
+				: this["~"].middlewares.map((m) => m.fn);
+
+		const stepComposer = stepEntry.composer as StepComposerInstance;
+		const stepFns = stepComposer["~"].middlewares.map((m) => m.fn);
+
+		let stepHandled = false;
+
+		// Combined chain: scene middleware → wrapper that runs step middleware.
+		const combined = [
+			...sceneFns,
+			async (c: any, next: Next) => {
+				await compose(stepFns)(c, async () => {
+					stepHandled = true;
+				});
+				return next();
 			},
-			passthrough,
-		);
+		];
+
+		await compose(combined)(context, terminal);
+
+		if (!stepHandled && stepEntry.fallback && !fellThrough) {
+			await stepEntry.fallback(context, noopNext);
+		}
 	}
 }
