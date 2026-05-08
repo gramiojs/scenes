@@ -447,6 +447,13 @@ export class Scene<
 			}
 		>
 	> {
+		// Implementation note: kept as a legacy numeric step for now. Migrating
+		// `.ask` to a named-step builder (with `key` as the step id) would let
+		// `scene.step.go("email")` jump back to the ask, but it breaks when
+		// chained with legacy `.step("message", ...)` calls — the transition out
+		// of a named ask step doesn't auto-advance to a sibling numeric legacy
+		// step, since the two systems track step ordering separately. Will land
+		// once builder/legacy mixing has unified semantics (v0.7.x).
 		return this.step(["callback_query", "message"], async (context, next) => {
 			if (context.scene.step.firstTime) return context.send(firstTimeMessage);
 

@@ -273,19 +273,36 @@ export function getInActiveSceneHandler<
 		update: async (state, options) => {
 			sceneData.state = Object.assign(sceneData.state, state);
 
-			// Default behaviour: advance to the next numeric step. Named-step scenes
-			// must pass an explicit `options.step` (or use scene.step.go) — relative
-			// navigation will land for them in step 6 (sceneSteps array).
-			const resolvedOptions: SceneUpdateState | undefined =
-				options ??
-				(typeof sceneData.stepId === "number"
-					? { step: sceneData.stepId + 1 }
-					: undefined);
+			// Explicit options.step → jump to that step.
+			if (options?.step !== undefined) {
+				await stepDerives.go(options.step, options.firstTime);
+				return state;
+			}
+			// Explicit options without step → persist state, no transition.
+			if (options !== undefined) {
+				await storage.set(key, sceneData);
+				return state;
+			}
 
-			if (resolvedOptions?.step !== undefined)
-				await stepDerives.go(resolvedOptions.step, resolvedOptions.firstTime);
-			else await storage.set(key, sceneData);
+			// No options: advance to the next step.
+			//   1. Builder mode (sceneSteps populated): walk array by index.
+			//   2. Legacy numeric mode: stepId + 1.
+			//   3. Otherwise: just persist (last step / unknown id).
+			const sceneSteps = scene["~scene"]?.steps ?? [];
+			if (sceneSteps.length > 0) {
+				const idx = sceneSteps.findIndex((s) => s.id === sceneData.stepId);
+				if (idx >= 0 && idx + 1 < sceneSteps.length) {
+					await stepDerives.go(sceneSteps[idx + 1]!.id);
+					return state;
+				}
+			}
 
+			if (typeof sceneData.stepId === "number") {
+				await stepDerives.go(sceneData.stepId + 1);
+				return state;
+			}
+
+			await storage.set(key, sceneData);
 			return state;
 		},
 		enter: getSceneEnter(
