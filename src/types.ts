@@ -39,8 +39,8 @@ export interface ParentSceneFrame {
 	name: string;
 	params: unknown;
 	state: unknown;
-	stepId: number;
-	previousStepId: number;
+	stepId: string | number;
+	previousStepId: string | number;
 	parentStack?: ParentSceneFrame[];
 }
 
@@ -48,8 +48,8 @@ export interface ScenesStorageData<Params = any, State = any> {
 	name: string;
 	params: Params;
 	state: State;
-	stepId: number;
-	previousStepId: number;
+	stepId: string | number;
+	previousStepId: string | number;
 	firstTime: boolean;
 	parentStack?: ParentSceneFrame[];
 }
@@ -65,7 +65,7 @@ export interface SceneUpdateState {
 	/**
 	 * @default sceneData.stepId + 1
 	 */
-	step?: number;
+	step?: string | number;
 	firstTime?: boolean;
 }
 
@@ -82,12 +82,12 @@ export interface EnterExit {
 }
 
 export type SceneStepReturn = {
-	id: number;
-	previousId: number;
+	id: string | number;
+	previousId: string | number;
 	// TODO: isFirstTime ??
 	firstTime: boolean;
 
-	go: (stepId: number, firstTime?: boolean) => Promise<void>;
+	go: (stepId: string | number, firstTime?: boolean) => Promise<void>;
 
 	next: () => Promise<void>;
 	previous: () => Promise<void>;

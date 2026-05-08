@@ -9,6 +9,7 @@ import type {
 	PossibleInUnknownScene,
 	SceneEnterHandler,
 	SceneStepReturn,
+	SceneUpdateState,
 	ScenesStorage,
 	ScenesStorageData,
 	StateTypesDefault,
@@ -265,19 +266,20 @@ export function getInActiveSceneHandler<
 		state: sceneData.state,
 		params: sceneData.params,
 		step: stepDerives,
-		update: async (
-			state,
-			options = {
-				step: sceneData.stepId + 1,
-			},
-		) => {
+		update: async (state, options) => {
 			sceneData.state = Object.assign(sceneData.state, state);
 
-			// sceneData.stepId.
-			// console.log("UPDATE", sceneData.state);
+			// Default behaviour: advance to the next numeric step. Named-step scenes
+			// must pass an explicit `options.step` (or use scene.step.go) — relative
+			// navigation will land for them in step 6 (sceneSteps array).
+			const resolvedOptions: SceneUpdateState | undefined =
+				options ??
+				(typeof sceneData.stepId === "number"
+					? { step: sceneData.stepId + 1 }
+					: undefined);
 
-			if (options?.step !== undefined)
-				await stepDerives.go(options.step, options.firstTime);
+			if (resolvedOptions?.step !== undefined)
+				await stepDerives.go(resolvedOptions.step, resolvedOptions.firstTime);
 			else await storage.set(key, sceneData);
 
 			return state;
@@ -326,12 +328,10 @@ export function getStepDerives(
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneStepReturn {
-	async function go(stepId: number, firstTime = true) {
+	async function go(stepId: string | number, firstTime = true) {
 		storageData.previousStepId = storageData.stepId;
 		storageData.stepId = stepId;
 		storageData.firstTime = firstTime;
-		// console.log("Oh we go to step", stepId);
-		// await storage.set(key, storageData);
 
 		context.scene = getInActiveSceneHandler(
 			context,
@@ -346,13 +346,25 @@ export function getStepDerives(
 		await scene.run(context, storage, key, storageData);
 	}
 
+	function relativeStep(delta: 1 | -1, op: "next" | "previous"): Promise<void> {
+		// Named step ids will be walked via the sceneSteps array in step 6.
+		// For now, only numeric stepIds support relative navigation.
+		if (typeof storageData.stepId !== "number") {
+			throw new Error(
+				`scene.step.${op}() does not yet support named step ids. ` +
+					`Use scene.step.go("name") to jump to a named step.`,
+			);
+		}
+		return go(storageData.stepId + delta);
+	}
+
 	return {
 		id: storageData.stepId,
 		previousId: storageData.previousStepId,
 		firstTime: storageData.firstTime,
 		go: go,
-		next: () => go(storageData.stepId + 1),
-		previous: () => go(storageData.stepId - 1),
+		next: () => relativeStep(1, "next"),
+		previous: () => relativeStep(-1, "previous"),
 	};
 }
 
