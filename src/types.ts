@@ -71,9 +71,9 @@ export interface SceneUpdateState {
 
 export type SceneEnterHandler = <Scene extends AnyScene>(
 	scene: Scene,
-	...args: Scene["~"]["params"] extends never
+	...args: Scene["~scene"]["params"] extends never
 		? []
-		: [params: Scene["~"]["params"]]
+		: [params: Scene["~scene"]["params"]]
 ) => Promise<void>;
 
 export interface EnterExit {
@@ -120,7 +120,7 @@ export interface InUnknownScene<
 > extends InActiveSceneHandlerReturn<Params, State> {
 	is<Scene extends AnyScene>(
 		scene: Scene,
-	): this is InUnknownScene<Scene["~"]["params"], Scene["~"]["state"], Scene>;
+	): this is InUnknownScene<Scene["~scene"]["params"], Scene["~scene"]["state"], Scene>;
 }
 
 export interface PossibleInUnknownScene<
@@ -132,8 +132,8 @@ export interface PossibleInUnknownScene<
 	// but we should fix it somehow
 	current: Scene extends AnyScene
 		? InActiveSceneHandlerReturn<
-				Scene["~"]["params"],
-				Partial<Scene["~"]["state"]>
+				Scene["~scene"]["params"],
+				Partial<Scene["~scene"]["state"]>
 			>
 		: InUnknownScene<Params, State, Scene> | undefined;
 }

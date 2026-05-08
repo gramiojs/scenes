@@ -54,10 +54,10 @@ export function getSceneEnter(
 			allScenes,
 		);
 
-		await scene["~"].enter(context);
+		await scene["~scene"].enter?.(context);
 
 		// @ts-expect-error
-		await scene.compose(context, async () => {
+		await scene.dispatch(context, async () => {
 			const sceneData = await storage.get(key);
 			if (!sceneData) return;
 
@@ -114,10 +114,10 @@ export function getSceneEnterSub(
 			allScenes,
 		);
 
-		await subScene["~"].enter(context);
+		await subScene["~scene"].enter?.(context);
 
 		// @ts-expect-error
-		await subScene.compose(context, async () => {
+		await subScene.dispatch(context, async () => {
 			const d = await storage.get(key);
 			if (!d) return;
 			await storage.set(key, { ...d, firstTime: false });
@@ -175,8 +175,12 @@ export function getSceneExitSub(
 			allowedScenes,
 			allScenes,
 		);
-		// @ts-expect-error
-		await parentScene.run(context, storage, key, parentData);
+		await parentScene.dispatchActive(
+			context as any,
+			storage,
+			key,
+			parentData,
+		);
 	};
 }
 
@@ -342,8 +346,12 @@ export function getStepDerives(
 			allowedScenes,
 			allScenes,
 		);
-		// @ts-expect-error
-		await scene.run(context, storage, key, storageData);
+		await scene.dispatchActive(
+			context as any,
+			storage,
+			key,
+			storageData,
+		);
 	}
 
 	function relativeStep(delta: 1 | -1, op: "next" | "previous"): Promise<void> {

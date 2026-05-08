@@ -1,5 +1,7 @@
 import type { Handler, Stringable } from "gramio";
 
+export type SceneLifecycleHandler = (ctx: any) => unknown | Promise<unknown>;
+
 /**
  * Per-step record stored on a Scene's `~scene.steps` array.
  *
@@ -33,17 +35,21 @@ export interface SceneStepEntry {
  * Stored at `scene["~scene"]` to avoid colliding with composer internals
  * and to keep augmentation of `@gramio/composer` unnecessary.
  */
-export interface SceneInternals {
+export interface SceneInternals<
+	State extends Record<string | number, any> = Record<string | number, any>,
+> {
 	steps: SceneStepEntry[];
 	stepsCount: number;
-	enter?: Handler<any>;
-	exit?: Handler<any>;
+	/** scene-level onEnter — single-arg, not middleware */
+	enter?: SceneLifecycleHandler;
+	/** scene-level onExit (lands in step 8) */
+	exit?: SceneLifecycleHandler;
 	isModule: boolean;
 	// Type-only phantom carriers — never read at runtime, only used so
 	// `params<T>()` / `state<T>()` / `exitData<T>()` can return a re-typed
 	// Scene without runtime overhead.
 	params: unknown;
-	state: unknown;
+	state: State;
 	exitData: unknown;
 }
 
@@ -55,7 +61,7 @@ export function createSceneInternals(name: string | undefined): SceneInternals {
 		exit: undefined,
 		isModule: name === undefined,
 		params: undefined,
-		state: undefined,
+		state: {} as Record<string | number, any>,
 		exitData: undefined,
 	};
 }

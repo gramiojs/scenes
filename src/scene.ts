@@ -3,7 +3,6 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
 	type AnyPlugin,
 	type Bot,
-	Composer,
 	type Context,
 	type ContextType,
 	type DeriveDefinitions,
@@ -11,13 +10,14 @@ import {
 	type EventComposer,
 	type Handler,
 	type MaybeArray,
-	type MaybePromise,
 	type Next,
 	type Stringable,
 	type UpdateName,
 	compose,
 	noopNext,
 } from "gramio";
+import { createSceneInternals, type SceneInternals } from "./scene-internals.js";
+import { SceneComposerBase } from "./scene-composer.js";
 import type {
 	Modify,
 	ScenesStorageData,
@@ -40,6 +40,13 @@ export type SceneDerivesDefinitions<
 	};
 };
 
+/**
+ * Scene IS an EventComposer. Inherits the full gramio DSL
+ * (`.command/.callbackQuery/.hears/.on/.use/.derive/.guard/.branch/.extend/...`)
+ * and adds scene-specific methods (`.params/.state/.exitData/.onEnter/.step/
+ * .ask`). Scene-specific data lives on `this["~scene"]` to avoid colliding
+ * with the composer's own `~` slot.
+ */
 export class Scene<
 	Params = never,
 	Errors extends ErrorDefinitions = {},
@@ -49,22 +56,21 @@ export class Scene<
 		State,
 		any
 	> = SceneDerivesDefinitions<Params, State>,
-> {
-	/** @internal */
-	"~" = {
-		params: {} as Params,
-		state: {} as State,
-		composer: new Composer(),
-		
-		enter: (ctx: ContextType<Bot, 'message'> & Derives["global"]) => {}
-	};
-
+> extends SceneComposerBase {
 	name: string;
 	stepsCount = 0;
+	/** @internal — scene-specific state. Stored on a dedicated slot so the
+	 * composer's own `~` slot remains untouched. */
+	"~scene": SceneInternals;
 
 	constructor(name: string) {
+		// Pass scene name to composer for cross-bot extended-set dedup.
+		super({ name });
 		this.name = name;
+		this["~scene"] = createSceneInternals(name);
 	}
+
+	// ─── Type-only chain methods (params / state / exitData) ───
 
 	params<SceneParams>() {
 		return this as unknown as Scene<
@@ -130,6 +136,8 @@ export class Scene<
 		>;
 	}
 
+	// ─── extend (overrides parent to re-type as Scene) ───
+
 	extend<UExposed extends object, UDerives extends Record<string, object>>(
 		composer: EventComposer<any, any, any, any, UExposed, UDerives, any>,
 	): Scene<
@@ -154,43 +162,22 @@ export class Scene<
 			| AnyPlugin
 			| EventComposer<any, any, any, any, any, any, any>,
 	): this {
-		if (
-			"compose" in pluginOrComposer &&
-			"run" in pluginOrComposer &&
-			!("_" in pluginOrComposer)
-		) {
-			// EventComposer: deduplication is handled internally via composer["~"].extended
-			this["~"].composer.extend(pluginOrComposer as any);
-		} else {
-			// AnyPlugin: Plugin exposes get "~"() that duck-types as Composer
-			this["~"].composer.extend(pluginOrComposer as any);
-		}
-
+		// Delegate to the inherited composer.extend(); cross-bot dedup is
+		// handled internally via this["~"].extended.
+		(super.extend as (arg: unknown) => unknown)(pluginOrComposer);
 		return this;
 	}
-	
+
+	// ─── Lifecycle ───
+
 	onEnter(
-	    handler: (context: ContextType<Bot, 'message'> & Derives["global"]) => unknown,
+		handler: (context: ContextType<Bot, "message"> & Derives["global"]) => unknown,
 	) {
-	    this['~'].enter = handler
-
-		return this
-	}
-
-	on<T extends UpdateName>(
-		updateName: MaybeArray<T>,
-		handler: Handler<ContextType<Bot, T> & Derives["global"] & Derives[T]>,
-	) {
-		this["~"].composer.on(updateName, handler);
-
+		this["~scene"].enter = handler as (ctx: any) => unknown;
 		return this;
 	}
 
-	use(handler: Handler<Context<Bot> & Derives["global"]>) {
-		this["~"].composer.use(handler);
-
-		return this;
-	}
+	// ─── Step API (legacy overloads only — builder API lands in step 6) ───
 
 	// @ts-expect-error
 	step<
@@ -244,7 +231,7 @@ export class Scene<
 			if (!handler)
 				throw new Error("You must specify handler as the second argument");
 
-			return this.use(async (context, next) => {
+			return this.use(async (context: any, next: any) => {
 				if (context.scene.step.id === stepId) {
 					if (context.is(updateName)) return handler(context, next);
 					return next();
@@ -253,7 +240,7 @@ export class Scene<
 			});
 		}
 
-		return this.use(async (context, next) => {
+		return this.use(async (context: any, next: any) => {
 			if (context.scene.step.id === stepId) return updateName(context, next);
 			return next();
 		});
@@ -298,7 +285,6 @@ export class Scene<
 			}
 		>
 	> {
-		// Types so hard for typescript
 		return this.step(["callback_query", "message"], async (context, next) => {
 			if (context.scene.step.firstTime) return context.send(firstTimeMessage);
 
@@ -320,7 +306,14 @@ export class Scene<
 		}) as any;
 	}
 
-	async compose(
+	// ─── Runtime entry points (called by scenes/src/index.ts and utils.ts) ───
+	//
+	// Named distinctly from the inherited Composer.compose()/run() to avoid
+	// signature collision. The composer DSL (`scene.run(ctx, next?)` would
+	// invoke the middleware runner) remains untouched on the inherited
+	// methods; scenes-specific dispatch goes through these.
+
+	async dispatch(
 		context: Context<Bot> & {
 			[key: string]: unknown;
 		},
@@ -342,7 +335,7 @@ export class Scene<
 		const botExtended = context.bot?.updates?.composer?.["~"]?.extended;
 
 		if (botExtended?.size) {
-			const fns = this["~"].composer["~"].middlewares
+			const fns = this["~"].middlewares
 				.filter((m) => {
 					if (!m.plugin) return true;
 					for (const key of botExtended) {
@@ -353,13 +346,13 @@ export class Scene<
 				.map((m) => m.fn);
 			await compose(fns)(context, terminal);
 		} else {
-			await this["~"].composer.run(context, terminal);
+			await super.run(context as any, terminal);
 		}
 
 		if (!fellThrough) onNext?.();
 	}
 
-	async run(
+	async dispatchActive(
 		context: Context<Bot> & {
 			[key: string]: unknown;
 		},
@@ -368,7 +361,7 @@ export class Scene<
 		data: ScenesStorageData<unknown, unknown>,
 		passthrough?: Next,
 	) {
-		return this.compose(
+		return this.dispatch(
 			context,
 			async () => {
 				if (data.firstTime) {
