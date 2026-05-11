@@ -200,20 +200,17 @@ describe("Scene.params()", () => {
 
 		const enter = {} as import("../src/types.js").SceneEnterHandler;
 
-		// When the scene declares .params<T>(), calling enter for that scene
-		// requires exactly [scene, params: T] — both arguments, with T enforced.
-		expectTypeOf(enter<typeof typed>).parameters.toEqualTypeOf<
-			[scene: typeof typed, params: { alpha: string }]
-		>();
-
-		// A scene without .params() resolves to just [scene] — no second arg.
-		expectTypeOf(enter<typeof plain>).parameters.toEqualTypeOf<
-			[scene: typeof plain]
-		>();
-
-		// Positive call-site checks.
+		// Positive call-site checks. SceneEnterHandler is now an interface
+		// with two overloads (no-params vs with-params), so we don't use
+		// `.parameters.toEqualTypeOf` (it can't enumerate overloads cleanly).
+		// `toBeCallableWith` exercises the overload resolution at call site,
+		// which is what users actually experience.
 		expectTypeOf(enter).toBeCallableWith(typed, { alpha: "hi" });
 		expectTypeOf(enter).toBeCallableWith(plain);
+
+		// Negative checks documented in tests/types/scene-chain.test-d.ts §9:
+		//   • enter(typed) without params → error
+		//   • enter(typed, { alpha: 123 }) wrong shape → error
 	});
 });
 
@@ -549,7 +546,7 @@ describe("Step navigation", () => {
 	});
 
 	it("step.previousId tracks the step we came from", async () => {
-		let capturedPreviousId: number | undefined;
+		let capturedPreviousId: string | number | undefined;
 
 		const scene = new Scene("nav-previousid")
 			.step("message", async (ctx) => {

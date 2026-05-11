@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Scene } from "../src";
+import { Scene } from "../src/index.js";
 
 it("", () => {
 	const scene = new Scene("")

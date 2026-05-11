@@ -125,14 +125,19 @@ describe("complex flows: realistic scenarios", () => {
 	it("the same module can be extended into multiple scenes independently", async () => {
 		const log: string[] = [];
 
-		const tap = new Scene().step("tap", (c) =>
-			c
-				.enter((ctx) => {
-					log.push(`tap:enter:${ctx.scene.params.who}`);
-					return ctx.send("type anything");
-				})
-				.on("message", (ctx) => ctx.scene.exit()),
-		);
+		// Module scenes don't know what params the host scene declares, so
+		// we declare them on the module too. (Or cast `ctx.scene.params` at
+		// the call site — but typed is cleaner.)
+		const tap = new Scene()
+			.params<{ who: string }>()
+			.step("tap", (c) =>
+				c
+					.enter((ctx) => {
+						log.push(`tap:enter:${ctx.scene.params.who}`);
+						return ctx.send("type anything");
+					})
+					.on("message", (ctx) => ctx.scene.exit()),
+			);
 
 		const sceneA = new Scene("A").params<{ who: string }>().extend(tap);
 		const sceneB = new Scene("B").params<{ who: string }>().extend(tap);
