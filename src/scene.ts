@@ -6,6 +6,7 @@ import {
 	type Context,
 	type ContextType,
 	type DeriveDefinitions,
+	type DeriveHandler,
 	type ErrorDefinitions,
 	type EventComposer,
 	type Handler,
@@ -20,6 +21,8 @@ import { createSceneInternals, type SceneInternals } from "./scene-internals.js"
 import { SceneComposerBase } from "./scene-composer.js";
 import {
 	StepComposer,
+	type ExtractStepState,
+	type StepComposerFor,
 	type StepComposerInstance,
 	buildStepEntry,
 } from "./step-composer.js";
@@ -65,9 +68,25 @@ export class Scene<
 > extends SceneComposerBase {
 	name: string;
 	stepsCount = 0;
+	/**
+	 * Override of the inherited composer's `~` slot to widen its `Out`
+	 * (phantom TOut carrier) to include the scene's `Derives["global"]`.
+	 * This is what makes `ctx.scene` visible inside scene-level event
+	 * handlers (`scene.callbackQuery / .command / .hears / .on / …`):
+	 * those methods type `ctx` via `EventContextOf<this, E>`, which reads
+	 * `Out` from this slot. With the widening, `ctx.scene` is now present
+	 * everywhere — both at the scene level AND inside step builders.
+	 */
+	declare "~": InstanceType<typeof SceneComposerBase>["~"] & {
+		Out: InstanceType<typeof SceneComposerBase>["~"]["Out"] & Derives["global"];
+	};
 	/** @internal — scene-specific state. Stored on a dedicated slot so the
-	 * composer's own `~` slot remains untouched. */
-	"~scene": SceneInternals;
+	 * composer's own `~` slot remains untouched. Generics here propagate
+	 * Scene's `Params` / `State` into the structural shape so that
+	 * `Scene<{id}, ...>` is distinct from `Scene<never, ...>` at the type
+	 * level (needed by `SceneEnterHandler` to differentiate the no-params
+	 * and with-params overloads at call sites). */
+	"~scene": SceneInternals<Params, State>;
 
 	constructor(name?: string) {
 		// Pass scene name to composer for cross-bot extended-set dedup.
@@ -76,7 +95,10 @@ export class Scene<
 		// public field — the `~scene.isModule` flag is the source of truth and
 		// `validateScenes` rejects modules at registration time.
 		this.name = name ?? "";
-		this["~scene"] = createSceneInternals(name);
+		this["~scene"] = createSceneInternals(name) as SceneInternals<
+			Params,
+			State
+		>;
 	}
 
 	// ─── Type-only chain methods (params / state / exitData) ───
@@ -108,16 +130,20 @@ export class Scene<
 			Params,
 			Errors,
 			StateParams,
-			Derives & {
-				global: {
-					scene: Modify<
-						Derives["global"]["scene"],
+			Modify<
+				Derives,
+				{
+					global: Modify<
+						Derives["global"],
 						{
-							state: StateParams;
+							scene: Modify<
+								Derives["global"]["scene"],
+								{ state: StateParams }
+							>;
 						}
 					>;
-				};
-			}
+				}
+			>
 		>;
 	}
 
@@ -233,6 +259,100 @@ export class Scene<
 		return this;
 	}
 
+	// ─── Composer-level overrides to preserve Scene<...> in the chain ──
+	//
+	// The base `EventComposer.derive(handler)` returns a widened EventComposer
+	// (it changes the TOut generic), which strips the `Scene<...>` subclass
+	// type — so chained `.onEnter / .step / .ask / .params` calls afterwards
+	// stop type-checking. We override here to:
+	//   1) delegate to `super.derive` for the runtime middleware,
+	//   2) re-type the return as `Scene<...>` with the new Derives mixed into
+	//      the scene's `Derives` slot (so step ctx can pick them up later).
+	//
+	// `.use / .guard / .command / .callbackQuery / .hears / ...` all already
+	// return `this` upstream so we don't need to override them — only the
+	// generic-widening methods (`derive`, `decorate`) need this treatment.
+
+	derive<D extends object>(
+		handler: DeriveHandler<ContextType<Bot, "message"> & Derives["global"], D>,
+	): Scene<
+		Params,
+		Errors,
+		State,
+		Modify<
+			Derives,
+			{
+				global: Derives["global"] & D;
+			}
+		>
+	>;
+
+	derive<D extends object>(
+		handler: DeriveHandler<ContextType<Bot, "message"> & Derives["global"], D>,
+		options: { as: "scoped" | "global" },
+	): Scene<
+		Params,
+		Errors,
+		State,
+		Modify<
+			Derives,
+			{
+				global: Derives["global"] & D;
+			}
+		>
+	>;
+
+	derive<E extends UpdateName, D extends object>(
+		event: MaybeArray<E>,
+		handler: DeriveHandler<ContextType<Bot, E> & Derives["global"], D>,
+	): Scene<Params, Errors, State, Derives & { [K in E]: D }>;
+
+	derive(...args: any[]): any {
+		(super.derive as (...a: any[]) => unknown)(...args);
+		return this;
+	}
+
+	/**
+	 * Override of `.decorate` that preserves Scene<...>. Same reason as
+	 * `.derive` above — the base method widens TOut and drops the subclass.
+	 */
+	decorate<D extends object>(
+		values: D,
+	): Scene<
+		Params,
+		Errors,
+		State,
+		Modify<Derives, { global: Derives["global"] & D }>
+	>;
+
+	decorate<D extends object>(
+		values: D,
+		options: { as: "scoped" | "global" },
+	): Scene<
+		Params,
+		Errors,
+		State,
+		Modify<Derives, { global: Derives["global"] & D }>
+	>;
+
+	decorate(...args: any[]): any {
+		(super.decorate as (...a: any[]) => unknown)(...args);
+		return this;
+	}
+
+	// Scene-level event handlers (.on/.command/.callbackQuery/.hears/.use)
+	// inherit their typing from `SceneComposerBase` and don't carry
+	// `ctx.scene` automatically. The inherited methods still work at
+	// runtime — the scene plugin's derive supplies `ctx.scene` — but to
+	// reference it at the type level you can:
+	//   1) prefer the step builder (`scene.step("name", c => c.on(...))`):
+	//      step handlers DO see `ctx.scene` (typed via StepComposerFor).
+	//   2) or treat `ctx as any` at the call site if you must use scene-
+	//      level handlers and want to call `ctx.scene.*` directly.
+	// Threading derives into the parent class's TOut without breaking LSP
+	// requires an upstream change in `@gramio/composer` to support subclass
+	// TOut widening — tracked as a follow-up.
+
 	// ─── Lifecycle ───
 
 	/**
@@ -281,19 +401,56 @@ export class Scene<
 	// Disambiguation: first arg in `KNOWN_EVENTS` (or array) → legacy event-filter.
 	// Otherwise the first string is treated as a step name (builder form).
 
-	/** Builder, numeric step id (autoincrement) */
-	step(
-		builder: (c: StepComposerInstance) => StepComposerInstance | void,
-	): this;
+	/**
+	 * Builder, numeric step id (autoincrement).
+	 *
+	 * The builder's return type is inspected for any `Awaited<ReturnType<H>>`
+	 * that contains `UpdateData<T>` — i.e., any handler returning
+	 * `ctx.scene.update({…})`. Those T's are merged into Scene's `State`
+	 * generic automatically, so subsequent steps see `ctx.scene.state.X`
+	 * properly typed without any `.state<T>()` annotation.
+	 */
+	// @ts-expect-error overload narrows return type beyond impl
+	step<
+		B extends (c: StepComposerFor<Derives>) => unknown,
+		StepState extends object = ExtractStepState<ReturnType<B>>,
+	>(
+		builder: B,
+	): Scene<
+		Params,
+		Errors,
+		Record<string, never> extends State ? StepState : State & StepState,
+		Modify<
+			Derives,
+			{
+				global: Modify<
+					Derives["global"],
+					{
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								state: Record<string, never> extends State
+									? StepState
+									: State & StepState;
+							}
+						>;
+					}
+				>;
+			}
+		>
+	>;
 
-	/** Builder, named step id */
-	step(
-		name: string,
-		builder: (c: StepComposerInstance) => StepComposerInstance | void,
-	): this;
-
-	/** Legacy event-filtered step */
-	// @ts-expect-error overload signature
+	/**
+	 * Legacy event-filtered step (single event name OR an array of events).
+	 *
+	 * Listed BEFORE the named-builder overload so TS's overload resolution
+	 * tries this first. `T extends UpdateName` then either succeeds (real
+	 * event name like `"message"`) and types `ctx` properly, OR fails so TS
+	 * falls through to the named-builder overload. Result: `step("message",
+	 * (ctx, next) => …)` types `ctx` as `MessageContext`, while
+	 * `step("intro", (c) => …)` (with a name that's NOT a known event)
+	 * cleanly resolves to the named-builder overload.
+	 */
 	step<
 		T extends UpdateName,
 		Handler extends StepHandler<
@@ -328,6 +485,40 @@ export class Scene<
 										? Type
 										: State & Type
 									: State;
+							}
+						>;
+					}
+				>;
+			}
+		>
+	>;
+
+	/**
+	 * Builder, named step id. Same state-inference behavior as the numeric
+	 * form — any `update({…})` calls inside handlers widen `State`.
+	 */
+	step<
+		B extends (c: StepComposerFor<Derives>) => unknown,
+		StepState extends object = ExtractStepState<ReturnType<B>>,
+	>(
+		name: string,
+		builder: B,
+	): Scene<
+		Params,
+		Errors,
+		Record<string, never> extends State ? StepState : State & StepState,
+		Modify<
+			Derives,
+			{
+				global: Modify<
+					Derives["global"],
+					{
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								state: Record<string, never> extends State
+									? StepState
+									: State & StepState;
 							}
 						>;
 					}

@@ -36,7 +36,9 @@ export interface SceneStepEntry {
  * and to keep augmentation of `@gramio/composer` unnecessary.
  */
 export interface SceneInternals<
+	Params = unknown,
 	State extends Record<string | number, any> = Record<string | number, any>,
+	ExitData = unknown,
 > {
 	steps: SceneStepEntry[];
 	stepsCount: number;
@@ -45,12 +47,13 @@ export interface SceneInternals<
 	/** scene-level onExit (lands in step 8) */
 	exit?: SceneLifecycleHandler;
 	isModule: boolean;
-	// Type-only phantom carriers — never read at runtime, only used so
-	// `params<T>()` / `state<T>()` / `exitData<T>()` can return a re-typed
-	// Scene without runtime overhead.
-	params: unknown;
+	// Type-only carriers — never read at runtime, used so `params<T>()` /
+	// `state<T>()` / `exitData<T>()` carry the user's types through Scene's
+	// structural shape (so `Scene<{id}>` and `Scene<never>` are distinct
+	// types at the call-site level — needed for SceneEnterHandler arity).
+	params: Params;
 	state: State;
-	exitData: unknown;
+	exitData: ExitData;
 }
 
 export function createSceneInternals(name: string | undefined): SceneInternals {

@@ -27,7 +27,10 @@ export function getSceneEnter(
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneEnterHandler {
-	return async (scene, ...args) => {
+	// The SceneEnterHandler interface is two overloads (with/without params);
+	// the runtime impl is a single async function, so we cast it once at the
+	// return site. Args is always treated as an arbitrary tuple at runtime.
+	const impl = async (scene: AnyScene, ...args: unknown[]) => {
 		if (!allowedScenes.includes(scene.name))
 			throw new Error(
 				`You should register this scene (${scene.name}) in plugin options (scenes: ${allowedScenes.join(
@@ -61,6 +64,7 @@ export function getSceneEnter(
 		// flag in storage prevents re-firing on subsequent step transitions.
 		await scene.dispatchActive(context as any, storage, key, sceneParams);
 	};
+	return impl as unknown as SceneEnterHandler;
 }
 
 export function getSceneEnterSub(
@@ -71,7 +75,7 @@ export function getSceneEnterSub(
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneEnterHandler {
-	return async (subScene, ...args) => {
+	const impl = async (subScene: AnyScene, ...args: unknown[]) => {
 		if (!allowedScenes.includes(subScene.name))
 			throw new Error(
 				`You should register this scene (${subScene.name}) in plugin options (scenes: ${allowedScenes.join(", ")})`,
@@ -115,6 +119,7 @@ export function getSceneEnterSub(
 
 		await subScene.dispatchActive(context as any, storage, key, subData);
 	};
+	return impl as unknown as SceneEnterHandler;
 }
 
 export function getSceneExitSub(

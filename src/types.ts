@@ -1,6 +1,6 @@
 import type { Storage } from "@gramio/storage";
 import type { MaybePromise } from "gramio";
-import type { AnyScene } from "./scene.js";
+import type { AnyScene, Scene } from "./scene.js";
 
 export type Modify<Base, Mod> = Omit<Base, keyof Mod> & Mod;
 
@@ -77,12 +77,29 @@ export interface SceneUpdateState {
 	firstTime?: boolean;
 }
 
-export type SceneEnterHandler = <Scene extends AnyScene>(
-	scene: Scene,
-	...args: Scene["~scene"]["params"] extends never
-		? []
-		: [params: Scene["~scene"]["params"]]
-) => Promise<void>;
+/**
+ * Extracts the Params generic from a Scene type. Reads from the SCENE
+ * GENERIC, not from the runtime `~scene.params` carrier (which is typed
+ * `unknown` at the class field level and never round-trips the user's
+ * type back out). This is what lets `enter(scene)` reject a missing
+ * params arg and enforce the declared shape when one is required.
+ */
+type SceneParamsOf<S> = S extends Scene<infer P, any, any, any> ? P : never;
+
+/**
+ * `enter(scene, params?)` typed via two overloads so each case is checked
+ * cleanly without relying on a conditional-rest-args dance (which expect-
+ * type's `toBeCallableWith` can't fully resolve under generic constraints):
+ *
+ *   • If the Scene declares `Params = never` (never called `.params<T>()`),
+ *     `enter(scene)` is valid with no second argument.
+ *   • If the Scene declares params, `enter(scene, params)` is required and
+ *     the params shape is enforced against the declared type.
+ */
+export interface SceneEnterHandler {
+	<S extends Scene<never, any, any, any>>(scene: S): Promise<void>;
+	<S extends AnyScene>(scene: S, params: SceneParamsOf<S>): Promise<void>;
+}
 
 export interface EnterExit {
 	enter: SceneEnterHandler;

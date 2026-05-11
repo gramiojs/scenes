@@ -1,4 +1,8 @@
 import {
+	type ComposerLike,
+	type ContextOf,
+	type EventComposer,
+	type EventContextOf,
 	createComposer,
 	defineComposerMethods,
 	eventTypes,
@@ -15,6 +19,7 @@ import {
 	type UpdateName,
 } from "gramio";
 import type { SceneStepEntry } from "./scene-internals.js";
+import type { UpdateData } from "./types.js";
 
 type AnyBot = Bot<any, any, any>;
 type TelegramEventMap = {
@@ -44,13 +49,20 @@ export interface StepInternals {
 }
 
 /**
- * Step builder context for the default event union (message + callback_query).
- * Both have `.send`, `.api`, `.from`, `.chat` — the common scene surface.
+ * Step builder context for the default event union (message + callback_query),
+ * merged with anything `this` has accumulated (scene-level derives, step-level
+ * derives) via `ContextOf<TThis>` / `EventContextOf<TThis, E>`.
+ *
+ * `EventContextOf` picks up both the global TOut AND per-event TDerives, so
+ * derives registered with `.derive("message", ...)` are visible too.
+ *
+ * Both default-union contexts have `.send`, `.api`, `.from`, `.chat` — the
+ * common scene surface.
  */
-export type StepCtx<E extends UpdateName = DefaultStepEvents> = ContextType<
-	AnyBot,
-	E
->;
+export type StepCtx<
+	TThis,
+	E extends UpdateName = DefaultStepEvents,
+> = ContextType<AnyBot, E> & EventContextOf<TThis, E>;
 
 /**
  * Lazily attach an empty StepInternals object on first use, then return it.
@@ -76,7 +88,7 @@ const stepLifecycleMethods = defineComposerMethods({
 	 */
 	enter<TThis, E extends UpdateName = DefaultStepEvents>(
 		this: TThis,
-		handler: (ctx: StepCtx<E>, next: Next) => unknown,
+		handler: (ctx: StepCtx<TThis, E>, next: Next) => unknown,
 	): TThis {
 		ensureStepInternals(this).enter = handler as Handler<any>;
 		return this;
@@ -89,7 +101,7 @@ const stepLifecycleMethods = defineComposerMethods({
 	 */
 	exit<TThis, E extends UpdateName = DefaultStepEvents>(
 		this: TThis,
-		handler: (ctx: StepCtx<E>, next: Next) => unknown,
+		handler: (ctx: StepCtx<TThis, E>, next: Next) => unknown,
 	): TThis {
 		ensureStepInternals(this).exit = handler as Handler<any>;
 		return this;
@@ -102,7 +114,7 @@ const stepLifecycleMethods = defineComposerMethods({
 	 */
 	fallback<TThis, E extends UpdateName = DefaultStepEvents>(
 		this: TThis,
-		handler: (ctx: StepCtx<E>, next: Next) => unknown,
+		handler: (ctx: StepCtx<TThis, E>, next: Next) => unknown,
 	): TThis {
 		ensureStepInternals(this).fallback = handler as Handler<any>;
 		return this;
@@ -116,7 +128,7 @@ const stepLifecycleMethods = defineComposerMethods({
 		this: TThis,
 		text:
 			| Stringable
-			| ((ctx: StepCtx<E>) => Stringable | Promise<Stringable>),
+			| ((ctx: StepCtx<TThis, E>) => Stringable | Promise<Stringable>),
 	): TThis {
 		ensureStepInternals(this).message = text as StepInternals["message"];
 		return this;
@@ -148,7 +160,12 @@ const stepLifecycleMethods = defineComposerMethods({
 	 * @example
 	 * c.updates<{ name: string }>().on("message", ctx => ctx.scene.update({ name: ctx.text! }))
 	 */
-	updates<TThis, _T>(this: TThis): TThis {
+	/**
+	 * @returns the same composer instance, with no type change. TThis is
+	 * inferred from the binding; if you call it as `c.updates<T>()`, the
+	 * return is typed as `c`.
+	 */
+	updates<_T, TThis = unknown>(this: TThis): TThis {
 		return this;
 	},
 });
@@ -173,6 +190,213 @@ export const { Composer: StepComposer } = createComposer<
 });
 
 export type StepComposerInstance = InstanceType<typeof StepComposer>;
+
+/**
+ * StepComposer instance pre-seeded with the parent Scene's derives in TOut.
+ *
+ * This is the type you want at `c => c…` callsites — it carries `ctx.scene`,
+ * any scene-level `.derive(...)`-injected fields, and any `.extend(plugin)`
+ * derives all the way into the step's `.enter / .on / .command / ...`
+ * handlers. Without this threading, step ctx is plain
+ * `MessageContext | CallbackQueryContext` and `ctx.scene.update(...)` /
+ * `ctx.scene.exit()` would not type-check.
+ *
+ * The Scene's Derives generic looks like:
+ *   `{ global: { scene: ... } & UserDerives; message: ...; callback_query: ... }`
+ *
+ * We pull `Derives["global"]` into TOut so it's visible on every step ctx,
+ * and pull the per-event slots into TDerives so `.on("message", ...)` /
+ * `.command(...)` handlers receive the right narrowed shape too.
+ *
+ * Generic order: the parent scene's `Derives` is what we need; we accept
+ * the whole Scene type and project just that slot to keep callers from
+ * having to extract by hand.
+ */
+export type StepComposerFor<
+	TSceneDerives extends { global: object } = { global: {} },
+	AccState extends object = {},
+> = StepComposerStateTracked<
+	EventComposer<
+		Context<AnyBot>,
+		TelegramEventMap,
+		Context<AnyBot>,
+		Context<AnyBot> & TSceneDerives["global"],
+		{},
+		Omit<TSceneDerives, "global"> extends Record<string, object>
+			? Omit<TSceneDerives, "global">
+			: {},
+		typeof stepMethods
+	> &
+		typeof stepMethods,
+	TSceneDerives,
+	AccState
+>;
+
+/**
+ * Extracts the state contribution from a handler's awaited return type.
+ *
+ * `ctx.scene.update({ k: v })` returns `Promise<UpdateData<{ k: v }>>`, so
+ * `update({k:v})` returns are picked up automatically. Returning
+ * `void`/`undefined`/`Promise<void>` from a handler contributes nothing
+ * (`{}`), so handlers that only send messages don't pollute the state.
+ *
+ * Mirrors `Awaited<ReturnType<Handler>>` extraction already done by the
+ * legacy `step(event, handler)` overload in scene.ts — this generalises
+ * the same trick to every event-handler method on the step builder.
+ */
+export type ExtractUpdateState<R> = Awaited<R> extends UpdateData<infer T>
+	? T
+	: {};
+
+/**
+ * Re-typed view of a step composer where each event-handler method
+ * (`.on / .command / .callbackQuery / .hears / .enter / .exit / .fallback`)
+ * accumulates `Awaited<ReturnType<H>>` into a phantom `AccState` generic.
+ *
+ * The accumulated state is what `Scene.step(...)` reads off the builder's
+ * return type to widen the Scene's `State` generic — so that
+ * `ctx.scene.state.X` is properly typed in subsequent step handlers
+ * without any `.state<T>()` annotation.
+ *
+ * Conceptually: `c.on("message", ctx => ctx.scene.update({ name: ctx.text }))`
+ * threads `{ name: string }` into the step's `AccState`; on the next step's
+ * `ctx.scene.state` you see `{ name: string }` typed in.
+ */
+export type StepComposerStateTracked<
+	TBase,
+	TSceneDerives extends { global: object },
+	AccState extends object,
+> = Omit<
+	TBase,
+	"on" | "command" | "callbackQuery" | "hears" | "enter" | "exit" | "fallback"
+> & {
+	on<
+		E extends UpdateName,
+		H extends (
+			ctx: ContextType<AnyBot, E> &
+				TSceneDerives["global"] &
+				(E extends keyof TSceneDerives ? TSceneDerives[E] : {}),
+			next: Next,
+		) => unknown,
+	>(
+		event: E | readonly E[],
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+
+	command<
+		H extends (
+			ctx: ContextType<AnyBot, "message"> & {
+				args: string | null;
+			} & TSceneDerives["global"],
+		) => unknown,
+	>(
+		name: string | readonly string[],
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+
+	callbackQuery<
+		Trigger,
+		H extends (
+			ctx: ContextType<AnyBot, "callback_query"> & {
+				queryData: any;
+			} & TSceneDerives["global"],
+		) => unknown,
+	>(
+		trigger: Trigger,
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+
+	hears<
+		H extends (
+			ctx: ContextType<AnyBot, "message"> & {
+				args: RegExpMatchArray | null;
+			} & TSceneDerives["global"],
+		) => unknown,
+	>(
+		trigger:
+			| RegExp
+			| string
+			| readonly string[]
+			| ((ctx: ContextType<AnyBot, "message">) => boolean),
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+
+	enter<
+		E extends UpdateName = DefaultStepEvents,
+		H extends (
+			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+			next: Next,
+		) => unknown = (
+			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+			next: Next,
+		) => unknown,
+	>(
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+
+	exit<
+		E extends UpdateName = DefaultStepEvents,
+		H extends (
+			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+			next: Next,
+		) => unknown = (
+			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+			next: Next,
+		) => unknown,
+	>(
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+
+	fallback<
+		E extends UpdateName = DefaultStepEvents,
+		H extends (
+			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+			next: Next,
+		) => unknown = (
+			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+			next: Next,
+		) => unknown,
+	>(
+		handler: H,
+	): StepComposerStateTracked<
+		TBase,
+		TSceneDerives,
+		AccState & ExtractUpdateState<ReturnType<H>>
+	>;
+};
+
+/** Helper: extract the accumulated state generic from a tracked step composer. */
+export type ExtractStepState<T> = T extends StepComposerStateTracked<
+	any,
+	any,
+	infer S
+>
+	? S
+	: {};
 
 /**
  * Read step lifecycle hooks attached by `.enter/.exit/.fallback/.message/.events`.
