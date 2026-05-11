@@ -24,7 +24,9 @@
 	"readme": "https://gramio.dev/plugins/official/scenes",
 	"scripts": {
 		"prepublishOnly": "bunx pkgroll",
-		"generate": "bun scripts/generate.ts"
+		"generate": "bun scripts/generate.ts",
+		"test": "bun test",
+		"test:types": "tsc --noEmit --project tsconfig.test.json"
 	},
 	"keywords": [
 		"gramio",

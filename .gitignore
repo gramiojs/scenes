@@ -10,7 +10,7 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# Caches 
+# Caches
 
 .cache
 
@@ -176,3 +176,4 @@ dist
 
 test.ts
 tg-bot-api
+.research
