@@ -1,12 +1,12 @@
 import type { Storage } from "@gramio/storage";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { DeriveHandler } from "@gramio/composer";
 import {
 	type AnyPlugin,
 	type Bot,
 	type Context,
 	type ContextType,
 	type DeriveDefinitions,
-	type DeriveHandler,
 	type ErrorDefinitions,
 	type EventComposer,
 	type Handler,
@@ -555,7 +555,11 @@ export class Scene<
 			}
 
 			if (typeof first === "string") {
-				// Reserved event name → legacy event-filter (back-compat)
+				// Reserved event name → legacy event-filter (back-compat).
+				// At type level the overload reorder + `T extends UpdateName`
+				// catches builder-with-reserved-name mistakes; at runtime we
+				// just route the call to the legacy handler so existing code
+				// (`step("message", ctx => …)`) keeps working.
 				if ((KNOWN_EVENTS as readonly string[]).includes(first)) {
 					return this._registerLegacyEventStep(
 						this.stepsCount++,
@@ -563,7 +567,7 @@ export class Scene<
 						second,
 					);
 				}
-				// Otherwise treat string as a step NAME (builder form)
+				// Otherwise treat string as a step NAME (builder form).
 				return this._registerBuilderStep(first, second);
 			}
 		}

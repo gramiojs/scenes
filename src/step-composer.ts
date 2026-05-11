@@ -1,6 +1,4 @@
 import {
-	type ComposerLike,
-	type ContextOf,
 	type EventComposer,
 	type EventContextOf,
 	createComposer,
