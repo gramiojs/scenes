@@ -12,6 +12,7 @@
  */
 
 import { describe, expectTypeOf, it } from "bun:test";
+import { CallbackData } from "gramio";
 import { Scene } from "../../src/index.js";
 
 // ─── 1. Default event union — message + callback_query ────────────────────
@@ -87,6 +88,26 @@ describe("step builder per-event handlers narrow ctx", () => {
 			c.callbackQuery("yes", (ctx) => {
 				// .answer is unique to callback contexts; .data is the payload
 				expectTypeOf(ctx.answer).toBeFunction();
+			}),
+		);
+	});
+
+	it("c.callbackQuery(CallbackData, ctx => ...) — queryData is inferred", () => {
+		const PickColor = new CallbackData("pick-color").number("id").string("name");
+		new Scene("x").step("a", (c) =>
+			c.callbackQuery(PickColor, (ctx) => {
+				expectTypeOf(ctx.queryData).toEqualTypeOf<{
+					id: number;
+					name: string;
+				}>();
+			}),
+		);
+	});
+
+	it("c.callbackQuery(RegExp, ctx => ...) — queryData is RegExpMatchArray", () => {
+		new Scene("x").step("a", (c) =>
+			c.callbackQuery(/^pick:(\d+)$/, (ctx) => {
+				expectTypeOf(ctx.queryData).toEqualTypeOf<RegExpMatchArray>();
 			}),
 		);
 	});
@@ -180,6 +201,29 @@ describe("scene-level derive flows into step ctx", () => {
 					return ctx.db.lookup(1);
 				}),
 			);
+	});
+
+	it("global derive visible across every handler kind (parity with gramio)", () => {
+		new Scene("x")
+			.derive(() => ({ user: { id: 1 } }))
+			.step("a", (c) => {
+				c.enter((ctx) => expectTypeOf(ctx.user.id).toEqualTypeOf<number>());
+				c.exit((ctx) => expectTypeOf(ctx.user.id).toEqualTypeOf<number>());
+				c.fallback((ctx) => expectTypeOf(ctx.user.id).toEqualTypeOf<number>());
+				c.on("message", (ctx) =>
+					expectTypeOf(ctx.user.id).toEqualTypeOf<number>(),
+				);
+				c.command("cancel", (ctx) =>
+					expectTypeOf(ctx.user.id).toEqualTypeOf<number>(),
+				);
+				c.hears(/x/, (ctx) =>
+					expectTypeOf(ctx.user.id).toEqualTypeOf<number>(),
+				);
+				c.callbackQuery("yes", (ctx) =>
+					expectTypeOf(ctx.user.id).toEqualTypeOf<number>(),
+				);
+				return c;
+			});
 	});
 
 	it("scene.extend(plugin) brings plugin derives into step ctx", () => {

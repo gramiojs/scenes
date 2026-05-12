@@ -341,17 +341,10 @@ export class Scene<
 	}
 
 	// Scene-level event handlers (.on/.command/.callbackQuery/.hears/.use)
-	// inherit their typing from `SceneComposerBase` and don't carry
-	// `ctx.scene` automatically. The inherited methods still work at
-	// runtime — the scene plugin's derive supplies `ctx.scene` — but to
-	// reference it at the type level you can:
-	//   1) prefer the step builder (`scene.step("name", c => c.on(...))`):
-	//      step handlers DO see `ctx.scene` (typed via StepComposerFor).
-	//   2) or treat `ctx as any` at the call site if you must use scene-
-	//      level handlers and want to call `ctx.scene.*` directly.
-	// Threading derives into the parent class's TOut without breaking LSP
-	// requires an upstream change in `@gramio/composer` to support subclass
-	// TOut widening — tracked as a follow-up.
+	// inherit their typing from `SceneComposerBase`. The `~` slot widening
+	// above (Out & Derives["global"]) threads `ctx.scene` (and any
+	// scene-level `.derive(...)` fields) into every inherited handler's
+	// ctx, so they type-check the same way step handlers do.
 
 	// ─── Lifecycle ───
 

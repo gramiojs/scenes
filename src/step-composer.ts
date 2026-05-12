@@ -9,6 +9,7 @@ import {
 import {
 	_composerMethods,
 	type Bot,
+	type CallbackData,
 	type Context,
 	type ContextType,
 	type ContextsMapping,
@@ -260,6 +261,22 @@ export type ExtractUpdateState<R> = Awaited<R> extends UpdateData<infer T>
  * threads `{ name: string }` into the step's `AccState`; on the next step's
  * `ctx.scene.state` you see `{ name: string }` typed in.
  */
+/**
+ * Mirror of gramio's `EventContextOf<TThis, E>` projected against a Scene's
+ * `Derives` slot — merges the scene-level global derives plus any per-event
+ * derives registered via `scene.derive("<event>", ...)` so that step handlers
+ * see the same shape gramio's bot-level handlers would.
+ *
+ * `Derives` slots default to `{}` (see `DeriveDefinitions` in gramio), so the
+ * `keyof` conditional safely degrades when an event has no entry.
+ */
+type StepEventCtx<
+	E extends UpdateName,
+	TSceneDerives extends { global: object },
+> = ContextType<AnyBot, E> &
+	TSceneDerives["global"] &
+	(E extends keyof TSceneDerives ? TSceneDerives[E] : {});
+
 export type StepComposerStateTracked<
 	TBase,
 	TSceneDerives extends { global: object },
@@ -270,12 +287,7 @@ export type StepComposerStateTracked<
 > & {
 	on<
 		E extends UpdateName,
-		H extends (
-			ctx: ContextType<AnyBot, E> &
-				TSceneDerives["global"] &
-				(E extends keyof TSceneDerives ? TSceneDerives[E] : {}),
-			next: Next,
-		) => unknown,
+		H extends (ctx: StepEventCtx<E, TSceneDerives>, next: Next) => unknown,
 	>(
 		event: E | readonly E[],
 		handler: H,
@@ -287,9 +299,7 @@ export type StepComposerStateTracked<
 
 	command<
 		H extends (
-			ctx: ContextType<AnyBot, "message"> & {
-				args: string | null;
-			} & TSceneDerives["global"],
+			ctx: StepEventCtx<"message", TSceneDerives> & { args: string | null },
 		) => unknown,
 	>(
 		name: string | readonly string[],
@@ -301,11 +311,15 @@ export type StepComposerStateTracked<
 	>;
 
 	callbackQuery<
-		Trigger,
+		Trigger extends CallbackData | string | RegExp,
 		H extends (
-			ctx: ContextType<AnyBot, "callback_query"> & {
-				queryData: any;
-			} & TSceneDerives["global"],
+			ctx: StepEventCtx<"callback_query", TSceneDerives> & {
+				queryData: Trigger extends CallbackData
+					? ReturnType<Trigger["unpack"]>
+					: Trigger extends RegExp
+						? RegExpMatchArray
+						: never;
+			},
 		) => unknown,
 	>(
 		trigger: Trigger,
@@ -318,9 +332,9 @@ export type StepComposerStateTracked<
 
 	hears<
 		H extends (
-			ctx: ContextType<AnyBot, "message"> & {
+			ctx: StepEventCtx<"message", TSceneDerives> & {
 				args: RegExpMatchArray | null;
-			} & TSceneDerives["global"],
+			},
 		) => unknown,
 	>(
 		trigger:
@@ -337,11 +351,8 @@ export type StepComposerStateTracked<
 
 	enter<
 		E extends UpdateName = DefaultStepEvents,
-		H extends (
-			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
-			next: Next,
-		) => unknown = (
-			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+		H extends (ctx: StepEventCtx<E, TSceneDerives>, next: Next) => unknown = (
+			ctx: StepEventCtx<E, TSceneDerives>,
 			next: Next,
 		) => unknown,
 	>(
@@ -354,11 +365,8 @@ export type StepComposerStateTracked<
 
 	exit<
 		E extends UpdateName = DefaultStepEvents,
-		H extends (
-			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
-			next: Next,
-		) => unknown = (
-			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+		H extends (ctx: StepEventCtx<E, TSceneDerives>, next: Next) => unknown = (
+			ctx: StepEventCtx<E, TSceneDerives>,
 			next: Next,
 		) => unknown,
 	>(
@@ -371,11 +379,8 @@ export type StepComposerStateTracked<
 
 	fallback<
 		E extends UpdateName = DefaultStepEvents,
-		H extends (
-			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
-			next: Next,
-		) => unknown = (
-			ctx: ContextType<AnyBot, E> & TSceneDerives["global"],
+		H extends (ctx: StepEventCtx<E, TSceneDerives>, next: Next) => unknown = (
+			ctx: StepEventCtx<E, TSceneDerives>,
 			next: Next,
 		) => unknown,
 	>(
