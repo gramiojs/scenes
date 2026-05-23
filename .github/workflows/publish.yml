@@ -13,6 +13,16 @@ on:
                 required: false
                 type: boolean
                 default: true
+            npm_tag:
+                description: "NPM dist-tag (latest | beta | next | …)"
+                required: false
+                type: string
+                default: "latest"
+            github_release_prerelease:
+                description: "Mark GitHub release as prerelease"
+                required: false
+                type: boolean
+                default: false
 
 permissions:
     contents: write
@@ -52,7 +62,7 @@ jobs:
 
             - name: Publish package to NPM
               if: ${{ github.event.inputs.publish_to_npm }}
-              run: bun publish --access public
+              run: bun publish --access public --tag ${{ github.event.inputs.npm_tag }}
               env:
                   NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -64,5 +74,5 @@ jobs:
                   name: v${{ steps.changelog.outputs.version }}
                   body: ${{ steps.changelog.outputs.changelog }}
                   draft: false
-                  prerelease: false
+                  prerelease: ${{ github.event.inputs.github_release_prerelease == 'true' }}
                   generateReleaseNotes: true

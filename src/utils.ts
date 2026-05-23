@@ -9,6 +9,7 @@ import type {
 	PossibleInUnknownScene,
 	SceneEnterHandler,
 	SceneStepReturn,
+	SceneUpdateState,
 	ScenesStorage,
 	ScenesStorageData,
 	StateTypesDefault,
@@ -26,7 +27,10 @@ export function getSceneEnter(
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneEnterHandler {
-	return async (scene, ...args) => {
+	// The SceneEnterHandler interface is two overloads (with/without params);
+	// the runtime impl is a single async function, so we cast it once at the
+	// return site. Args is always treated as an arbitrary tuple at runtime.
+	const impl = async (scene: AnyScene, ...args: unknown[]) => {
 		if (!allowedScenes.includes(scene.name))
 			throw new Error(
 				`You should register this scene (${scene.name}) in plugin options (scenes: ${allowedScenes.join(
@@ -34,13 +38,15 @@ export function getSceneEnter(
 				)})`,
 			);
 
+		const initialStepId = scene["~scene"]?.steps?.[0]?.id ?? 0;
 		const sceneParams: ScenesStorageData = {
 			name: scene.name,
 			state: {},
 			params: args[0],
-			stepId: 0,
-			previousStepId: 0,
+			stepId: initialStepId,
+			previousStepId: initialStepId,
 			firstTime: true,
+			entered: false,
 		};
 		await storage.set(key, sceneParams);
 		context.scene = getInActiveSceneHandler(
@@ -53,16 +59,12 @@ export function getSceneEnter(
 			allScenes,
 		);
 
-		await scene["~"].enter(context);
-
-		// @ts-expect-error
-		await scene.compose(context, async () => {
-			const sceneData = await storage.get(key);
-			if (!sceneData) return;
-
-			await storage.set(key, { ...sceneData, firstTime: false });
-		});
+		// onEnter is fired by dispatchActive after derive/decorate/guard run, so
+		// derived ctx fields (ctx.user etc.) are visible to it. The `entered`
+		// flag in storage prevents re-firing on subsequent step transitions.
+		await scene.dispatchActive(context as any, storage, key, sceneParams);
 	};
+	return impl as unknown as SceneEnterHandler;
 }
 
 export function getSceneEnterSub(
@@ -73,7 +75,7 @@ export function getSceneEnterSub(
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneEnterHandler {
-	return async (subScene, ...args) => {
+	const impl = async (subScene: AnyScene, ...args: unknown[]) => {
 		if (!allowedScenes.includes(subScene.name))
 			throw new Error(
 				`You should register this scene (${subScene.name}) in plugin options (scenes: ${allowedScenes.join(", ")})`,
@@ -92,13 +94,15 @@ export function getSceneEnterSub(
 		// (same pattern as getSceneExit)
 		currentSceneData.firstTime = false;
 
+		const initialStepId = subScene["~scene"]?.steps?.[0]?.id ?? 0;
 		const subData: ScenesStorageData = {
 			name: subScene.name,
 			state: {},
 			params: args[0],
-			stepId: 0,
-			previousStepId: 0,
+			stepId: initialStepId,
+			previousStepId: initialStepId,
 			firstTime: true,
+			entered: false,
 			parentStack: [...(currentSceneData.parentStack ?? []), parentFrame],
 		};
 
@@ -113,19 +117,14 @@ export function getSceneEnterSub(
 			allScenes,
 		);
 
-		await subScene["~"].enter(context);
-
-		// @ts-expect-error
-		await subScene.compose(context, async () => {
-			const d = await storage.get(key);
-			if (!d) return;
-			await storage.set(key, { ...d, firstTime: false });
-		});
+		await subScene.dispatchActive(context as any, storage, key, subData);
 	};
+	return impl as unknown as SceneEnterHandler;
 }
 
 export function getSceneExitSub(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
+	currentScene: AnyScene,
 	storage: ScenesStorage,
 	sceneData: ScenesStorageData,
 	key: `@gramio/scenes:${string | number}`,
@@ -133,6 +132,9 @@ export function getSceneExitSub(
 	allScenes: AnyScene[],
 ) {
 	return async (returnData?: Record<string, unknown>) => {
+		// Fire onExit on the sub-scene that's leaving, before merging back up
+		await currentScene["~scene"]?.exit?.(context);
+
 		// Prevent scene.run()'s onNext from overwriting parent data
 		// (same pattern as getSceneExit)
 		sceneData.firstTime = false;
@@ -174,17 +176,25 @@ export function getSceneExitSub(
 			allowedScenes,
 			allScenes,
 		);
-		// @ts-expect-error
-		await parentScene.run(context, storage, key, parentData);
+		await parentScene.dispatchActive(
+			context as any,
+			storage,
+			key,
+			parentData,
+		);
 	};
 }
 
 export function getSceneExit(
+	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
+	scene: AnyScene,
 	storage: Storage,
 	sceneData: ScenesStorageData,
 	key: `@gramio/scenes:${string | number}`,
 ) {
-	return () => {
+	return async () => {
+		// Fire scene.onExit hook before tearing down storage
+		await scene["~scene"]?.exit?.(context);
 		// TODO: do it smarter. for now it fix overrides of scene exit
 		sceneData.firstTime = false;
 
@@ -265,21 +275,39 @@ export function getInActiveSceneHandler<
 		state: sceneData.state,
 		params: sceneData.params,
 		step: stepDerives,
-		update: async (
-			state,
-			options = {
-				step: sceneData.stepId + 1,
-			},
-		) => {
+		update: async (state, options) => {
 			sceneData.state = Object.assign(sceneData.state, state);
 
-			// sceneData.stepId.
-			// console.log("UPDATE", sceneData.state);
-
-			if (options?.step !== undefined)
+			// Explicit options.step → jump to that step.
+			if (options?.step !== undefined) {
 				await stepDerives.go(options.step, options.firstTime);
-			else await storage.set(key, sceneData);
+				return state;
+			}
+			// Explicit options without step → persist state, no transition.
+			if (options !== undefined) {
+				await storage.set(key, sceneData);
+				return state;
+			}
 
+			// No options: advance to the next step.
+			//   1. Builder mode (sceneSteps populated): walk array by index.
+			//   2. Legacy numeric mode: stepId + 1.
+			//   3. Otherwise: just persist (last step / unknown id).
+			const sceneSteps = scene["~scene"]?.steps ?? [];
+			if (sceneSteps.length > 0) {
+				const idx = sceneSteps.findIndex((s) => s.id === sceneData.stepId);
+				if (idx >= 0 && idx + 1 < sceneSteps.length) {
+					await stepDerives.go(sceneSteps[idx + 1]!.id);
+					return state;
+				}
+			}
+
+			if (typeof sceneData.stepId === "number") {
+				await stepDerives.go(sceneData.stepId + 1);
+				return state;
+			}
+
+			await storage.set(key, sceneData);
 			return state;
 		},
 		enter: getSceneEnter(
@@ -289,15 +317,18 @@ export function getInActiveSceneHandler<
 			allowedScenes,
 			allScenes,
 		),
-		exit: getSceneExit(storage, sceneData, key),
-		reenter: async (params) =>
-			getSceneEnter(
+		exit: getSceneExit(context, scene, storage, sceneData, key),
+		reenter: async (params) => {
+			// Fire onExit before re-entering — semantically the prior occupancy ends.
+			await scene["~scene"]?.exit?.(context);
+			return getSceneEnter(
 				context,
 				storage as ScenesStorage,
 				key,
 				allowedScenes,
 				allScenes,
-			)(scene, params ?? sceneData.params),
+			)(scene, params ?? sceneData.params);
+		},
 		enterSub: getSceneEnterSub(
 			context,
 			storage as ScenesStorage,
@@ -308,6 +339,7 @@ export function getInActiveSceneHandler<
 		),
 		exitSub: getSceneExitSub(
 			context,
+			scene,
 			storage as ScenesStorage,
 			sceneData,
 			key,
@@ -326,12 +358,10 @@ export function getStepDerives(
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneStepReturn {
-	async function go(stepId: number, firstTime = true) {
+	async function go(stepId: string | number, firstTime = true) {
 		storageData.previousStepId = storageData.stepId;
 		storageData.stepId = stepId;
 		storageData.firstTime = firstTime;
-		// console.log("Oh we go to step", stepId);
-		// await storage.set(key, storageData);
 
 		context.scene = getInActiveSceneHandler(
 			context,
@@ -342,8 +372,46 @@ export function getStepDerives(
 			allowedScenes,
 			allScenes,
 		);
-		// @ts-expect-error
-		await scene.run(context, storage, key, storageData);
+		await scene.dispatchActive(
+			context as any,
+			storage,
+			key,
+			storageData,
+		);
+	}
+
+	function relativeStep(delta: 1 | -1, op: "next" | "previous"): Promise<void> {
+		// Builder mode: walk `~scene.steps` by index — supports named ids.
+		const sceneSteps = scene["~scene"]?.steps ?? [];
+		if (sceneSteps.length > 0) {
+			const idx = sceneSteps.findIndex((s) => s.id === storageData.stepId);
+			if (idx === -1) {
+				// Current step lives outside the builder array (legacy gated middleware).
+				// Fall through to numeric arithmetic below.
+				if (typeof storageData.stepId === "number") {
+					return go(storageData.stepId + delta);
+				}
+				throw new Error(
+					`scene.step.${op}(): cannot find current step "${storageData.stepId}" in scene "${scene.name}"`,
+				);
+			}
+			const targetIdx = idx + delta;
+			if (targetIdx < 0 || targetIdx >= sceneSteps.length) {
+				throw new Error(
+					`scene.step.${op}(): no ${op} step from "${storageData.stepId}" in scene "${scene.name}"`,
+				);
+			}
+			return go(sceneSteps[targetIdx]!.id);
+		}
+
+		// Legacy mode: numeric arithmetic.
+		if (typeof storageData.stepId !== "number") {
+			throw new Error(
+				`scene.step.${op}() does not yet support named step ids without a step builder. ` +
+					`Use scene.step.go("name") to jump to a named step.`,
+			);
+		}
+		return go(storageData.stepId + delta);
 	}
 
 	return {
@@ -351,8 +419,8 @@ export function getStepDerives(
 		previousId: storageData.previousStepId,
 		firstTime: storageData.firstTime,
 		go: go,
-		next: () => go(storageData.stepId + 1),
-		previous: () => go(storageData.stepId - 1),
+		next: () => relativeStep(1, "next"),
+		previous: () => relativeStep(-1, "previous"),
 	};
 }
 
@@ -403,7 +471,7 @@ export function getPossibleInSceneHandlers<
 			allScenes,
 		),
 		enter: getSceneEnter(context, storage, key, allowedScenes, allScenes),
-		exit: getSceneExit(storage, sceneData, key),
+		exit: getSceneExit(context, scene, storage, sceneData, key),
 		// @ts-expect-error PRIVATE KEY
 		"~": {
 			data: sceneData,
@@ -414,6 +482,12 @@ export function getPossibleInSceneHandlers<
 export function validateScenes(scenes: AnyScene[]): void {
 	const names = new Set<string>();
 	for (const scene of scenes) {
+		if (scene["~scene"]?.isModule || !scene.name) {
+			throw new Error(
+				"Cannot register an unnamed Scene (step module) directly. " +
+					"Pass it to scene.extend(module) to merge into a named scene instead.",
+			);
+		}
 		if (names.has(scene.name)) {
 			throw new Error(`Duplicate scene name detected: ${scene.name}`);
 		}

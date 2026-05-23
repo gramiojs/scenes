@@ -132,9 +132,8 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				scenes,
 			);
 
-			return scene.run(
-				// @ts-ignore
-				context,
+			return scene.dispatchActive(
+				context as any,
 				storage,
 				key,
 				sceneData,
