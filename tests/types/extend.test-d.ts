@@ -8,7 +8,7 @@
  */
 
 import { describe, expectTypeOf, it } from "bun:test";
-import { Plugin } from "gramio";
+import { Composer, Plugin } from "gramio";
 import { Scene } from "../../src/index.js";
 
 type SceneParams<S> = S extends Scene<infer P, any, any, any> ? P : never;
@@ -117,6 +117,82 @@ describe(".derive() / .extend(plugin) keep Scene chain intact", () => {
 		const s = new Scene("x").extend(plugin);
 		s.step("a", (c) => c);
 		s.onEnter(() => {});
+	});
+});
+
+// ─── 4b. Plugin/Composer derives reach inside step builder handlers ───────
+//
+//      Verifies the canonical "Sharing Context Across Modules" pattern from
+//      gramio.dev/guides/composer: a `withUser`-style derive registered on
+//      a Composer or Plugin and extended into a Scene must be visible inside
+//      every step-builder handler kind (.enter/.message/.on/.command/
+//      .callbackQuery/.hears/.fallback/.exit), not just at the scene level.
+
+describe(".extend(plugin) derives reach inside step builder", () => {
+	const withUser = new Composer()
+		.derive(() => ({ user: { id: 1, name: "alice" } }))
+		.as("scoped");
+
+	it("Composer-shape plugin: ctx.user visible in every step handler kind", () => {
+		new Scene("checkout")
+			.extend(withUser)
+			.step("review", (c) => {
+				c.enter((ctx) => expectTypeOf(ctx.user.name).toEqualTypeOf<string>());
+				c.message((ctx) => `Hi ${ctx.user.name}`);
+				c.on("message", (ctx) =>
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>(),
+				);
+				c.command("cancel", (ctx) =>
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>(),
+				);
+				c.callbackQuery("ok", (ctx) =>
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>(),
+				);
+				c.hears(/back/, (ctx) =>
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>(),
+				);
+				c.fallback((ctx) =>
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>(),
+				);
+				c.exit((ctx) => expectTypeOf(ctx.user.name).toEqualTypeOf<string>());
+				return c;
+			});
+	});
+
+	it("Plugin-shape: ctx.<field> visible inside step builder", () => {
+		const withTracker = new Plugin("tracker").derive(() => ({
+			trackEvent: (_e: string) => {},
+		}));
+		new Scene("p")
+			.extend(withTracker)
+			.step("a", (c) =>
+				c.enter((ctx) => expectTypeOf(ctx.trackEvent).toBeFunction()),
+			);
+	});
+
+	it("Stacked .extend(pluginA).extend(pluginB) — both derives visible", () => {
+		const withDb = new Composer().derive(() => ({ db: "pg" as const })).as("scoped");
+		new Scene("y")
+			.extend(withUser)
+			.extend(withDb)
+			.step("a", (c) =>
+				c.enter((ctx) => {
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>();
+					expectTypeOf(ctx.db).toEqualTypeOf<"pg">();
+				}),
+			);
+	});
+
+	it(".extend then .state<T>() — both visible, chain survives", () => {
+		new Scene("x")
+			.extend(withUser)
+			.state<{ count: number }>()
+			.step("a", (c) =>
+				c.enter((ctx) => {
+					expectTypeOf(ctx.user.name).toEqualTypeOf<string>();
+					expectTypeOf(ctx.scene.state.count).toEqualTypeOf<number>();
+				}),
+			);
 	});
 });
 
