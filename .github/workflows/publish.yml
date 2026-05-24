@@ -43,6 +43,12 @@ jobs:
               with:
                   bun-version: 1.3.11
 
+            - name: Setup Node (for npm publish auth)
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  registry-url: "https://registry.npmjs.org"
+
             - id: changelog
               name: Generate changelog
               run: bun scripts/generate-changelog.ts
@@ -62,9 +68,9 @@ jobs:
 
             - name: Publish package to NPM
               if: ${{ github.event.inputs.publish_to_npm }}
-              run: bun publish --access public --tag ${{ github.event.inputs.npm_tag }}
+              run: npm publish --access public --tag ${{ github.event.inputs.npm_tag }}
               env:
-                  NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
             - name: GitHub Release
               uses: ncipollo/release-action@v1
