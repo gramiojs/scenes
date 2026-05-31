@@ -118,7 +118,7 @@ Three execution paths:
 
 2. **No builder step found (legacy mode)**:
    - If `!data.entered` and scene has `~scene.enter` → run scene's `derive`/`decorate` middleware then onEnter.
-   - Call inherited `dispatch(ctx, onNext, passthrough)` to run the full composer chain (legacy gated steps fire here).
+   - Call inherited `dispatch(ctx, onNext, passthrough, preRunFns)` to run the full composer chain (legacy gated steps fire here). `preRunFns` is the set of derive/decorate fns just run for onEnter — `dispatch` filters them out so they don't fire a second time on the entry update. Their `Object.assign` onto the live ctx persists, so downstream gated steps still see the derived fields. This keeps a scene-level derive consumed by onEnter at **exactly one** run per update.
    - In `onNext`, persist `firstTime: false, entered: true`.
 
 3. **Builder step, subsequent update (firstTime=false)**:
@@ -186,7 +186,7 @@ When a named plugin/composer is extended into both the bot AND a scene, scene's 
 
 ### `.derive()` visibility in `.onEnter`
 
-`.onEnter` fires AFTER scene-level `derive`/`decorate` middleware applies, so derived ctx fields are visible. This is true for both builder mode (setup chain runs first inside dispatchActive) and legacy mode (a wrapper runs derives ahead of the inherited dispatch chain).
+`.onEnter` fires AFTER scene-level `derive`/`decorate` middleware applies, so derived ctx fields are visible. This is true for both builder mode (setup chain runs first inside dispatchActive) and legacy mode (a wrapper runs derives ahead of the inherited dispatch chain). In legacy mode the pre-run fns are passed to `dispatch` as `preRunFns` and filtered out of the chain, so an onEnter-consumed derive runs exactly once on the entry update (no double-fire).
 
 ### Passthrough semantics
 

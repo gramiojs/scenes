@@ -690,6 +690,14 @@ export class Scene<
 		},
 		onNext?: () => unknown,
 		passthrough?: Next,
+		/**
+		 * Middleware fns that have already run for this update (e.g. derive/
+		 * decorate pre-run so `onEnter` could see them in the legacy path) and
+		 * must NOT run again here. They `Object.assign` onto the live ctx, so
+		 * their effect persists — re-running would only re-fire side effects and
+		 * double-count. Filtering by fn identity skips exactly those.
+		 */
+		skipFns?: ReadonlySet<unknown>,
 	) {
 		let fellThrough = false;
 		const terminal: Next = passthrough
@@ -705,15 +713,9 @@ export class Scene<
 		// "withUser:null"), and each middleware carries the plugin name it came from.
 		const botExtended = context.bot?.updates?.composer?.["~"]?.extended;
 
-		if (botExtended?.size) {
-			const fns = this["~"].middlewares
-				.filter((m) => {
-					if (!m.plugin) return true;
-					for (const key of botExtended) {
-						if (key.startsWith(`${m.plugin}:`)) return false;
-					}
-					return true;
-				})
+		if (botExtended?.size || skipFns?.size) {
+			const fns = this._dedupeAgainstBot(this["~"].middlewares, botExtended)
+				.filter((m) => !skipFns?.has(m.fn))
 				.map((m) => m.fn);
 			await compose(fns)(context, terminal);
 		} else {
@@ -721,6 +723,26 @@ export class Scene<
 		}
 
 		if (!fellThrough) onNext?.();
+	}
+
+	/**
+	 * @internal Drop middlewares whose `plugin` is already in the bot's
+	 * extended-set (`bot.extend(withUser)`) so a named plugin/composer shared
+	 * between the bot chain and a scene runs once per update, not twice. Used by
+	 * `dispatch` and by the onEnter setup pre-runs in `dispatchActive`.
+	 */
+	private _dedupeAgainstBot<T extends { plugin?: string }>(
+		mws: T[],
+		botExtended: ReadonlySet<string> | undefined,
+	): T[] {
+		if (!botExtended?.size) return mws;
+		return mws.filter((m) => {
+			if (!m.plugin) return true;
+			for (const key of botExtended) {
+				if (key.startsWith(`${m.plugin}:`)) return false;
+			}
+			return true;
+		});
 	}
 
 	async dispatchActive(
@@ -754,10 +776,17 @@ export class Scene<
 			// skipped on first entry so they don't double-fire on the trigger
 			// update (e.g. /start).
 			const setupTypes = new Set(["derive", "decorate", "guard"]);
+			// Scene-level setup honors cross-bot dedup: a derive already run by
+			// the bot's main chain (bot.extend(withUser)) is skipped here — its
+			// fields are already on ctx via Object.assign, so onEnter still sees
+			// them, and it isn't fired a second time. Step-local middleware is
+			// never bot-extended, so it needs no dedup.
+			const botExtended = context.bot?.updates?.composer?.["~"]?.extended;
 			const setupFns = [
-				...this["~"].middlewares
-					.filter((m) => setupTypes.has(m.type))
-					.map((m) => m.fn),
+				...this._dedupeAgainstBot(
+					this["~"].middlewares.filter((m) => setupTypes.has(m.type)),
+					botExtended,
+				).map((m) => m.fn),
 				...stepComposer["~"].middlewares
 					.filter((m) => setupTypes.has(m.type))
 					.map((m) => m.fn),
@@ -808,12 +837,21 @@ export class Scene<
 		if (!stepEntry) {
 			const fireOnEnter = !data.entered && this["~scene"].enter;
 
+			// fns pre-run for onEnter, skipped in the dispatch chain below so a
+			// scene-level derive consumed by onEnter runs exactly once on the
+			// entry update (it Object.assigns onto the live ctx, so its effect
+			// persists into the dispatch chain without re-running).
+			let preRunFns: Set<unknown> | undefined;
 			if (fireOnEnter) {
 				const setupTypes = new Set(["derive", "decorate"]);
-				const setupFns = this["~"].middlewares
-					.filter((m) => setupTypes.has(m.type))
-					.map((m) => m.fn);
+				const botExtended =
+					context.bot?.updates?.composer?.["~"]?.extended;
+				const setupFns = this._dedupeAgainstBot(
+					this["~"].middlewares.filter((m) => setupTypes.has(m.type)),
+					botExtended,
+				).map((m) => m.fn);
 				if (setupFns.length) {
+					preRunFns = new Set(setupFns);
 					await compose(setupFns)(context, noopNext);
 				}
 				await this["~scene"].enter!(context);
@@ -831,6 +869,7 @@ export class Scene<
 					}
 				},
 				passthrough,
+				preRunFns,
 			);
 		}
 
@@ -845,18 +884,10 @@ export class Scene<
 
 		// Cross-bot dedup on the scene-level chain (same logic as dispatch()).
 		const botExtended = context.bot?.updates?.composer?.["~"]?.extended;
-		const sceneFns =
-			botExtended?.size
-				? this["~"].middlewares
-						.filter((m) => {
-							if (!m.plugin) return true;
-							for (const k of botExtended) {
-								if (k.startsWith(`${m.plugin}:`)) return false;
-							}
-							return true;
-						})
-						.map((m) => m.fn)
-				: this["~"].middlewares.map((m) => m.fn);
+		const sceneFns = this._dedupeAgainstBot(
+			this["~"].middlewares,
+			botExtended,
+		).map((m) => m.fn);
 
 		const stepComposer = stepEntry.composer as StepComposerInstance;
 		const stepFns = stepComposer["~"].middlewares.map((m) => m.fn);

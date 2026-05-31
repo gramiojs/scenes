@@ -191,6 +191,34 @@ describe("Scene.extend() — runtime: deduplication within a scene chain", () =>
 		expect(callCount).toBe(2);
 	});
 
+	it("derive consumed by onEnter runs exactly once on the entry update (legacy mode)", async () => {
+		// Regression: previously the legacy path pre-ran derive/decorate so
+		// onEnter could see it, then dispatch() re-ran the whole chain — firing
+		// the derive twice on the entry update. dispatch() now skips the fns it
+		// pre-ran (they Object.assign onto the live ctx, so the effect persists).
+		let deriveCount = 0;
+		let seenInOnEnter: number | undefined;
+
+		const flow = new Scene("rt-onEnter-derive-once")
+			.derive(() => {
+				deriveCount++;
+				return { version: deriveCount };
+			})
+			.onEnter((ctx: any) => {
+				seenInOnEnter = ctx.version;
+			})
+			.step("message", (ctx) => {
+				if (ctx.scene.step.firstTime) return ctx.send("ok");
+				return ctx.scene.exit();
+			});
+
+		const env = makeEnv([flow], async (ctx) => ctx.scene.enter(flow));
+		await env.createUser().sendMessage("start");
+
+		expect(seenInOnEnter).toBe(1); // onEnter still sees the derive
+		expect(deriveCount).toBe(1); // ...and it ran exactly once
+	});
+
 	it("shared Composer extended into two independent scenes runs per-scene", async () => {
 		const counters = { A: 0, B: 0 };
 
@@ -274,6 +302,49 @@ describe("Scene.extend() — runtime: bot-level vs scene-level (common pattern)"
 		// Cross-chain dedup: scene.compose() detects withUser was already applied
 		// in the bot chain and skips it → withUser runs exactly once.
 		expect(callCount).toBe(1);
+	});
+
+	it("withUser in bot chain AND scene chain, WITH onEnter → still runs once", async () => {
+		// Regression: the onEnter setup pre-run must honor cross-bot dedup too.
+		// Without it, the bot chain ran withUser (1) and the pre-run ran it
+		// again (2) on the entry update. Covers both step modes.
+		for (const mode of ["legacy", "builder"] as const) {
+			let callCount = 0;
+			let seen: number | undefined;
+
+			const withUser = new Composer({ name: `rt-onEnter-dedup-${mode}` })
+				.derive(() => {
+					callCount++;
+					return { user: { id: 5 } };
+				})
+				.as("scoped");
+
+			const scene = new Scene(`rt-onEnter-dedup-scene-${mode}`)
+				.extend(withUser)
+				.onEnter((ctx: any) => {
+					seen = ctx.user?.id;
+				});
+			if (mode === "legacy")
+				scene.step("message", (ctx) => {
+					if (ctx.scene.step.firstTime) return ctx.send("ok");
+				});
+			else
+				scene.step("only", (c) =>
+					c.on("message", (ctx) => ctx.scene.exit()),
+				);
+
+			const bot = new Bot("test_token")
+				.extend(withUser)
+				.extend(scenes([scene]))
+				.on("message", async (ctx: any) => ctx.scene.enter(scene));
+
+			await new TelegramTestEnvironment(bot as any)
+				.createUser()
+				.sendMessage("start");
+
+			expect(seen).toBe(5); // onEnter still sees the bot-chain derive
+			expect(callCount).toBe(1); // ...and it ran exactly once
+		}
 	});
 
 	/**
