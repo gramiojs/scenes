@@ -26,7 +26,7 @@ import {
 	type StepComposerInstance,
 	buildStepEntry,
 } from "./step-composer.js";
-import { events as KNOWN_EVENTS } from "./utils.js";
+import { events as KNOWN_EVENTS, type LegacyStepEvent } from "./utils.js";
 import type {
 	Modify,
 	ScenesStorageData,
@@ -400,14 +400,18 @@ export class Scene<
 
 	// ─── Step API ───
 	//
-	// Three forms:
+	// Four forms:
 	//   1. Builder, numeric:  scene.step(c => c.enter(...).on("message", ...))
 	//   2. Builder, named:    scene.step("intro", c => c.enter(...).on("message", ...))
-	//   3. Legacy:            scene.step("message", (ctx, next) => ...) — preserved
+	//   3. Builder, explicit: scene.step({ name: "location" }, c => ...) — for names
+	//                          that collide with a reserved event
+	//   4. Legacy:            scene.step("message", (ctx, next) => ...) — preserved
 	//                          scene.step(["message", "callback_query"], handler)
 	//
-	// Disambiguation: first arg in `KNOWN_EVENTS` (or array) → legacy event-filter.
-	// Otherwise the first string is treated as a step name (builder form).
+	// Disambiguation: first arg in `KNOWN_EVENTS` (or an array) → legacy
+	// event-filter. Any other string → step name (builder form). `KNOWN_EVENTS`
+	// is frozen (see `utils.ts`), so this split is stable across Bot API
+	// releases, and the overloads below key off the same list.
 
 	/**
 	 * Builder, numeric step id (autoincrement).
@@ -449,15 +453,12 @@ export class Scene<
 	>;
 
 	/**
-	 * Legacy event-filtered step (single event name OR an array of events).
+	 * Legacy event-filtered step, array form — accepts ANY `UpdateName`.
 	 *
-	 * Listed BEFORE the named-builder overload so TS's overload resolution
-	 * tries this first. `T extends UpdateName` then either succeeds (real
-	 * event name like `"message"`) and types `ctx` properly, OR fails so TS
-	 * falls through to the named-builder overload. Result: `step("message",
-	 * (ctx, next) => …)` types `ctx` as `MessageContext`, while
-	 * `step("intro", (c) => …)` (with a name that's NOT a known event)
-	 * cleanly resolves to the named-builder overload.
+	 * An array is never a step name, so there's nothing to disambiguate here
+	 * and the full event union is safe. This is also the escape hatch for
+	 * events outside the reserved single-name list (`LegacyStepEvent`):
+	 * `step(["poll_answer"], handler)`.
 	 */
 	step<
 		T extends UpdateName,
@@ -467,7 +468,7 @@ export class Scene<
 		>,
 		Return = Awaited<ReturnType<Handler>>,
 	>(
-		updateName: MaybeArray<T>,
+		updateNames: readonly T[],
 		handler: Handler,
 	): Scene<
 		Params,
@@ -493,6 +494,105 @@ export class Scene<
 										? Type
 										: State & Type
 									: State;
+							}
+						>;
+					}
+				>;
+			}
+		>
+	>;
+
+	/**
+	 * Legacy event-filtered step, single event name.
+	 *
+	 * Listed BEFORE the named-builder overload so TS's overload resolution
+	 * tries this first. `T extends LegacyStepEvent` then either succeeds (a
+	 * reserved event name like `"message"`) and types `ctx` properly, OR fails
+	 * so TS falls through to the named-builder overload. Result:
+	 * `step("message", (ctx, next) => …)` types `ctx` as `MessageContext`,
+	 * while `step("intro", (c) => …)` cleanly resolves to the named-builder
+	 * overload.
+	 *
+	 * The reserved set is `LegacyStepEvent` (the frozen `events` list in
+	 * `utils.ts`) and NOT the full `UpdateName` union — see the doc comment
+	 * there. It is exactly what `step()` routes on at runtime, so a name that
+	 * types as a builder step is registered as one, and vice versa. Use
+	 * `step({ name: "location" }, (c) => …)` to build a step whose name
+	 * collides with a reserved event.
+	 */
+	step<
+		T extends LegacyStepEvent,
+		Handler extends StepHandler<
+			ContextType<Bot, T> & Derives["global"] & Derives[T],
+			any
+		>,
+		Return = Awaited<ReturnType<Handler>>,
+	>(
+		updateName: T,
+		handler: Handler,
+	): Scene<
+		Params,
+		Errors,
+		Extract<Return, UpdateData<any>> extends UpdateData<infer Type>
+			? Record<string, never> extends State
+				? Type
+				: State & Type
+			: State,
+		Modify<
+			Derives,
+			{
+				global: Modify<
+					Derives["global"],
+					{
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								state: Extract<Return, UpdateData<any>> extends UpdateData<
+									infer Type
+								>
+									? Record<string, never> extends State
+										? Type
+										: State & Type
+									: State;
+							}
+						>;
+					}
+				>;
+			}
+		>
+	>;
+
+	/**
+	 * Builder, named step id, explicit form. Escape hatch for step names that
+	 * collide with a reserved legacy event (`LegacyStepEvent`) — the bare
+	 * `step("location", (c) => …)` would resolve to the legacy overload:
+	 *
+	 * @example
+	 * scene.step({ name: "location" }, (c) =>
+	 *   c.message("Send your address").on("message", …))
+	 */
+	step<
+		B extends (c: StepComposerFor<Derives>) => unknown,
+		StepState extends object = ExtractStepState<ReturnType<B>>,
+	>(
+		options: { name: string },
+		builder: B,
+	): Scene<
+		Params,
+		Errors,
+		Record<string, never> extends State ? StepState : State & StepState,
+		Modify<
+			Derives,
+			{
+				global: Modify<
+					Derives["global"],
+					{
+						scene: Modify<
+							Derives["global"]["scene"],
+							{
+								state: Record<string, never> extends State
+									? StepState
+									: State & StepState;
 							}
 						>;
 					}
@@ -562,12 +662,24 @@ export class Scene<
 				);
 			}
 
+			// `{ name }` first arg → named builder step, explicitly. The escape
+			// hatch for names that collide with a reserved event below.
+			if (typeof first === "object" && first !== null) {
+				if (typeof first.name !== "string" || !first.name)
+					throw new Error(
+						'scene.step({ name }, builder) requires a non-empty string name: scene.step({ name: "location" }, c => ...)',
+					);
+				return this._registerBuilderStep(first.name, second);
+			}
+
 			if (typeof first === "string") {
 				// Reserved event name → legacy event-filter (back-compat).
-				// At type level the overload reorder + `T extends UpdateName`
-				// catches builder-with-reserved-name mistakes; at runtime we
-				// just route the call to the legacy handler so existing code
-				// (`step("message", ctx => …)`) keeps working.
+				// `KNOWN_EVENTS` is the SAME list the `LegacyStepEvent` overload
+				// keys off, so what types as a legacy step is registered as one
+				// and what types as a builder step is registered as one. It's a
+				// frozen list, not the full `UpdateName` union, so a Bot API
+				// release adding an update name (10.1 added `subscription`)
+				// can't retroactively steal an existing step name.
 				if ((KNOWN_EVENTS as readonly string[]).includes(first)) {
 					return this._registerLegacyEventStep(
 						this.stepsCount++,

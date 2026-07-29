@@ -503,10 +503,20 @@ Disambiguation when calling `.step(...)`:
 | ---------------------------------------------------------- | ------------------------------------------ |
 | `.step((c) => …)`                                          | Builder step, numeric id (autoincrement)   |
 | `.step("any-name", (c) => …)`                              | Builder step, named id                     |
+| `.step({ name: "message" }, (c) => …)`                     | Builder step, named id (explicit)          |
 | `.step("message" \| "callback_query" \| …, handler)`       | Legacy event-filtered step                 |
 | `.step(["message", "callback_query"], handler)`            | Legacy event-filtered step (multi-event)   |
 
-Reserved first-argument names are the Telegram event taxonomy (`message`, `callback_query`, `channel_post`, `inline_query`, …). Don't name a builder step the same as an event — TS will pick the legacy overload and your `c.enter(...)` will fail to type-check.
+Reserved first-argument names are a **fixed** list of event names — `message`, `callback_query`, `channel_post`, `inline_query`, `location`, `invoice`, … (the `events` export). It deliberately does not track the full Telegram update taxonomy, so a new Bot API update name can never turn one of your step names into a legacy step on a dependency bump.
+
+If you do want a builder step named after a reserved event, pass it explicitly:
+
+```typescript
+scene.step({ name: "location" }, (c) =>
+    c.message("Send your address").on("message", (ctx) => …));
+```
+
+And for a legacy step on an event outside the reserved list, use the array form — `.step(["poll_answer"], handler)`.
 
 You can mix legacy and builder steps in the same scene; they coexist on the same step list.
 

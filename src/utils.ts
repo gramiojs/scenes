@@ -1,5 +1,5 @@
 import type { Storage } from "@gramio/storage";
-import type { Bot, ContextType } from "gramio";
+import type { Bot, ContextType, UpdateName } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
@@ -495,6 +495,22 @@ export function validateScenes(scenes: AnyScene[]): void {
 	}
 }
 
+/**
+ * Update names reserved by the legacy `scene.step(event, handler)` form.
+ *
+ * Deliberately a frozen, hand-maintained list and NOT the full `UpdateName`
+ * union: `UpdateName` grows with every Bot API release, and a newly added
+ * update name would retroactively steal a step name from the builder form —
+ * Bot API 10.1 added `subscription`, which silently turned
+ * `step("subscription", (c) => …)` into a legacy event step and broke every
+ * chained `c.message/.enter/.on` call on it. Freezing the list means a Bot API
+ * release can never break an existing scene, and it keeps `step()`'s runtime
+ * routing and its type-level overload resolution reading from one source.
+ *
+ * Multi-event legacy steps are unaffected — the array form
+ * (`step(["poll_answer"], handler)`) accepts any `UpdateName`, since an array
+ * can never be mistaken for a step name.
+ */
 export const events = [
 	"message",
 	"callback_query",
@@ -526,4 +542,7 @@ export const events = [
 	"new_chat_members",
 	"chat_shared",
 	"users_shared",
-] as const;
+] as const satisfies readonly UpdateName[];
+
+/** Union of the update names reserved by `scene.step(event, handler)`. */
+export type LegacyStepEvent = (typeof events)[number];

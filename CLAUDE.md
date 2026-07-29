@@ -71,7 +71,7 @@ Scene-specific additions:
 
 The slots are independent so the composer pkg doesn't need augmentation.
 
-### Step API: three overload paths
+### Step API: four overload paths
 
 ```typescript
 // Builder, numeric (autoincrement)
@@ -79,6 +79,9 @@ scene.step((c) => c.enter(...).on("message", ...))
 
 // Builder, named
 scene.step("intro", (c) => c.enter(...).on("message", ...))
+
+// Builder, named explicitly — escape hatch for reserved event names
+scene.step({ name: "location" }, (c) => c.enter(...).on("message", ...))
 
 // Legacy event-filtered (back-compat)
 scene.step("message", (ctx, next) => {...})
@@ -88,8 +91,11 @@ scene.step(["message", "callback_query"], (ctx) => {...})
 **Disambiguation** at runtime (`scene.ts` `step(...)` impl):
 - 1 arg, function → builder, numeric id (autoincrement via `this.stepsCount++`).
 - 2 args, first is array → legacy event-filtered.
+- 2 args, first is an object → named builder step (`{ name }`, throws on empty).
 - 2 args, first is string IN the `events` list (`utils.ts:events`) → legacy event-filtered (back-compat).
 - 2 args, first is any other string → named builder step.
+
+**The `events` list is frozen and is the single source of truth for this split** — the legacy single-name overload is typed `T extends LegacyStepEvent` (`= (typeof events)[number]`, exported from `utils.ts`), so overload resolution and runtime routing agree by construction. It is deliberately NOT the full `UpdateName` union: that union grows every Bot API release, and each addition would retroactively reroute a matching step name to the legacy path. Bot API 10.1 added `subscription`, which is what broke `.step("subscription", (c) => …)` — TS picked the legacy overload and every chained `c.message/.enter/.on` failed to resolve (fixed in 0.7.2). The array form still accepts any `UpdateName`, since an array can't be confused with a step name.
 
 `_registerBuilderStep` creates a fresh `StepComposer`, runs the builder against it, and pushes a `SceneStepEntry` to `~scene.steps`.
 

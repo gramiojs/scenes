@@ -408,4 +408,51 @@ describe("scene.step() overload disambiguation", () => {
 			next(),
 		);
 	});
+
+	// ─── Step names vs. the Telegram event taxonomy ───────────────────────
+	//
+	// Only the frozen `events` list (utils.ts → `LegacyStepEvent`) is reserved
+	// for the legacy form. `UpdateName` keeps growing with each Bot API
+	// release — Bot API 10.1 added `subscription` — and reserving all of it
+	// would silently break `step("subscription", c => …)` on a dependency
+	// bump. `"gift"` here is exactly that shape: a real `UpdateName` that is
+	// NOT in the reserved list.
+
+	it("step(<update name outside the reserved list>, builder) — builder form", () => {
+		new Scene("x").step("gift", (c) =>
+			c
+				.message("What do you want?")
+				.enter((ctx) => {
+					expectTypeOf(ctx.send).toBeFunction();
+				})
+				.on("message", (ctx) => {
+					expectTypeOf(ctx.text).toEqualTypeOf<string | undefined>();
+					return ctx.scene.update({ wish: ctx.text! });
+				}),
+		);
+	});
+
+	it("state inference survives an update-name-shaped step name", () => {
+		new Scene("x")
+			.step("gift", (c) =>
+				c.on("message", (ctx) => ctx.scene.update({ wish: ctx.text! })),
+			)
+			.step("done", (c) =>
+				c.enter((ctx) => {
+					expectTypeOf(ctx.scene.state.wish).toEqualTypeOf<string>();
+				}),
+			);
+	});
+
+	it("step({ name }, builder) — escape hatch for reserved event names", () => {
+		new Scene("x").step({ name: "location" }, (c) =>
+			c
+				.message("Where are you?")
+				.on("message", (ctx) => ctx.scene.update({ where: ctx.text! })),
+		);
+	});
+
+	it("step([<event outside the reserved list>], handler) — array form takes any UpdateName", () => {
+		new Scene("x").step(["poll_answer"], (_ctx, next) => next());
+	});
 });
