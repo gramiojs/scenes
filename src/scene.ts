@@ -231,7 +231,22 @@ export class Scene<
 
 		for (const entry of otherInternals.steps) {
 			let newId: string | number;
-			if (typeof entry.id === "number") {
+			if (entry.legacy) {
+				// The gated `.use()` middleware (copied in by super.extend above)
+				// captured this id by value, so renumbering the entry would desync
+				// it from its handler. Keep the id and push our own autoincrement
+				// past it so later steps don't collide.
+				for (const existing of this["~scene"].steps) {
+					if (existing.id === entry.id) {
+						throw new Error(
+							`scene.extend: legacy step "${entry.id}" collides with an existing step in scene "${this.name || "<module>"}". Legacy event-filtered steps cannot be renumbered on merge — register them before the steps they conflict with, or migrate them to the builder API.`,
+						);
+					}
+				}
+				newId = entry.id;
+				if (typeof newId === "number" && newId >= this.stepsCount)
+					this.stepsCount = newId + 1;
+			} else if (typeof entry.id === "number") {
 				// Renumber to keep numeric ids unique across the merged scene.
 				newId = this.stepsCount++;
 			} else {
@@ -600,6 +615,21 @@ export class Scene<
 		updateName: MaybeArray<UpdateName>,
 		handler: (ctx: any, next: any) => unknown,
 	): this {
+		// Record an ordering placeholder in `~scene.steps`. The handler itself
+		// still runs through the scene composer chain (the gated `.use()` below)
+		// — `dispatchActive` sees `legacy: true` and takes the legacy path — but
+		// step navigation reads `~scene.steps`, so without an entry here a legacy
+		// step is invisible to it: `getSceneEnter` would start at the first
+		// *builder* step and `.update()` / `.step.next()` would jump straight over
+		// the legacy one. That's what made `.ask()` get skipped in scenes that
+		// also use builder steps.
+		this["~scene"].steps.push({
+			id: stepId,
+			composer: undefined,
+			legacy: true,
+			events: Array.isArray(updateName) ? [...updateName] : [updateName],
+		});
+
 		this.use(async (context: any, next: any) => {
 			if (context.scene?.step?.id === stepId) {
 				if (context.is(updateName)) return handler(context, next);
@@ -755,7 +785,11 @@ export class Scene<
 		passthrough?: Next,
 	) {
 		const sceneSteps = this["~scene"].steps;
-		const stepEntry = sceneSteps.find((s) => s.id === data.stepId);
+		const entry = sceneSteps.find((s) => s.id === data.stepId);
+		// Legacy entries are ordering placeholders only — they carry no composer,
+		// their handler lives in the scene chain, so they must fall through to the
+		// legacy dispatch path below.
+		const stepEntry = entry && !entry.legacy ? entry : undefined;
 
 		// Builder step on first entry: apply derives/decorates/guards so ctx is
 		// populated and access checks fire, fire scene.onEnter on the very

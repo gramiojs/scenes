@@ -15,6 +15,20 @@ export type SceneLifecycleHandler = (ctx: any) => unknown | Promise<unknown>;
 export interface SceneStepEntry {
 	id: string | number;
 	composer: unknown;
+	/**
+	 * `true` for legacy event-filtered steps (`scene.step("message", handler)`
+	 * and everything built on top of it, like `.ask`). Their handler lives in
+	 * the scene composer chain as a gated `.use()` middleware, not in a
+	 * StepComposer — `composer` is `undefined` and the runtime dispatches them
+	 * through the legacy path.
+	 *
+	 * The entry still exists so that `~scene.steps` is a complete, ordered
+	 * registry of every step: `getSceneEnter` picks `steps[0]` as the initial
+	 * step and `.update()` / `.step.next()` / `.step.previous()` walk this
+	 * array. Without a placeholder, a legacy step sitting between builder steps
+	 * would be silently skipped.
+	 */
+	legacy?: boolean;
 	enter?: Handler<any>;
 	exit?: Handler<any>;
 	fallback?: Handler<any>;

@@ -93,7 +93,9 @@ scene.step(["message", "callback_query"], (ctx) => {...})
 
 `_registerBuilderStep` creates a fresh `StepComposer`, runs the builder against it, and pushes a `SceneStepEntry` to `~scene.steps`.
 
-`_registerLegacyEventStep` adds a gated `.use()` middleware to `this["~"].middlewares` that checks `context.scene.step.id === stepId` and `context.is(updateName)`.
+`_registerLegacyEventStep` adds a gated `.use()` middleware to `this["~"].middlewares` that checks `context.scene.step.id === stepId` and `context.is(updateName)`. It **also** pushes a placeholder `SceneStepEntry` (`{ id, composer: undefined, legacy: true, events }`) to `~scene.steps`.
+
+**`~scene.steps` is the complete ordered registry of every step**, builder and legacy alike. Everything that decides "which step is first / next / previous" reads it — `getSceneEnter`'s `steps[0].id`, `ctx.scene.update()`'s index walk, `getStepDerives`'s `relativeStep`. A legacy step with no entry there is invisible to navigation and gets silently skipped, which is what broke `.ask()` in scenes that also had builder steps (fixed in 0.7.2). `dispatchActive` checks `entry.legacy` to decide whether the entry is dispatchable (builder path) or just an ordering marker (legacy path).
 
 ### `StepComposer` (`src/step-composer.ts`)
 
@@ -116,7 +118,7 @@ Three execution paths:
    - Run step's `.message` (if defined) and `.enter` (if defined).
    - Persist `{...data, firstTime: false, entered: true}`.
 
-2. **No builder step found (legacy mode)**:
+2. **No builder step found, or the entry at this id is `legacy: true` (legacy mode)**:
    - If `!data.entered` and scene has `~scene.enter` → run scene's `derive`/`decorate` middleware then onEnter.
    - Call inherited `dispatch(ctx, onNext, passthrough, preRunFns)` to run the full composer chain (legacy gated steps fire here). `preRunFns` is the set of derive/decorate fns just run for onEnter — `dispatch` filters them out so they don't fire a second time on the entry update. Their `Object.assign` onto the live ctx persists, so downstream gated steps still see the derived fields. This keeps a scene-level derive consumed by onEnter at **exactly one** run per update.
    - In `onNext`, persist `firstTime: false, entered: true`.
@@ -136,8 +138,8 @@ Existing storage data without the field treats it as falsy — correct default f
 ### Step navigation (`getStepDerives` in `utils.ts`)
 
 `step.next()` / `step.previous()`:
-- If `~scene.steps` is non-empty (builder mode) → walk the array by index. Throws when no next/previous exists.
-- Else (legacy numeric-only) → `stepId ± 1`.
+- If `~scene.steps` is non-empty → walk the array by index (it contains both builder and legacy entries, in registration order). Throws when no next/previous exists.
+- Else (scene with no steps at all) → `stepId ± 1`.
 
 `step.go(idOrName)` accepts `string | number`.
 
