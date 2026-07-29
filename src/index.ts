@@ -12,6 +12,7 @@ import {
 	events,
 	getInActiveSceneHandler,
 	getSceneHandlers,
+	isInActiveSceneHandler,
 	validateScenes,
 } from "./utils.js";
 
@@ -141,6 +142,15 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			);
 		})
 		.derive(["message", "callback_query"], async (context) => {
+			// With `passthrough` an update can reach the outer bot chain while
+			// the user is still inside a scene — the `.on` handler above has
+			// already installed the full in-scene handler (state/params/step,
+			// plus an `exit()` that fires the scene's onExit hook) on the
+			// context. Re-deriving here would replace it with the bare
+			// enter/exit pair, so keep whatever is already there.
+			const active = (context as { scene?: unknown }).scene;
+			if (isInActiveSceneHandler(active)) return { scene: active as EnterExit };
+
 			return {
 				scene: await getSceneHandlers(
 					context as typeof context & {
@@ -153,7 +163,11 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				),
 			} as {
 				// TODO: Make it cleaner
-				scene: Omit<EnterExit, "exit">;
+				// `exit` is part of the contract even outside a scene: with
+				// `passthrough: true` a global handler (`bot.command("cancel")`)
+				// can fire while a scene is active, and exiting from there is
+				// the documented way to cancel it.
+				scene: EnterExit;
 			};
 		});
 }

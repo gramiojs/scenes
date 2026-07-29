@@ -435,6 +435,15 @@ bot.extend(scenes([greeting, checkout, support], {
 | `storage`     | `Storage` | `inMemoryStorage()` | Where scene state is persisted (in-memory loses state on restart; use Redis / file / etc. for production).   |
 | `passthrough` | `boolean` | `true`              | If `true`, updates the active step doesn't claim fall through to outer bot handlers (`bot.command`, `bot.on`). Set `false` to make scenes greedy. |
 
+Because of `passthrough`, a global handler can run **while a scene is active** — so `ctx.scene.exit()` is available there too (it fires the scene's `onExit` hook before clearing storage, and is a no-op when the user isn't in a scene):
+
+```typescript
+bot
+    .extend(scenes([signup]))
+    .command("cancel", (ctx) => ctx.scene.exit())   // works inside and outside a scene
+    .command("help", (ctx) => ctx.send("/cancel to quit"));
+```
+
 ### `scenesDerives` — when you need `ctx.scene` before the router
 
 Use `scenesDerives` to inject `ctx.scene.enter` / `ctx.scene.current` into handlers that run **before** the scenes router (e.g. a global onboarding gate):

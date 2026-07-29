@@ -206,6 +206,23 @@ export function getSceneExit(
 // 	return value === true;
 // }
 
+/**
+ * True when `context.scene` is the full in-scene handler installed by the
+ * `scenes()` plugin for an active scene (as opposed to the bare enter/exit
+ * pair handed to contexts outside a scene). `step` exists only on
+ * `InActiveSceneHandlerReturn`.
+ */
+export function isInActiveSceneHandler(
+	value: unknown,
+): value is InActiveSceneHandlerReturn<any, any> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"step" in value &&
+		"exit" in value
+	);
+}
+
 export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: ScenesStorage,
@@ -217,9 +234,21 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 > {
 	const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
 
-	const enterExit = {
+	const enterExit: EnterExit = {
 		enter: getSceneEnter(context, storage, key, allowedScenes, scenes),
-		exit: () => storage.delete(key),
+		// Outside a scene there is nothing to tear down, but with `passthrough`
+		// a bot-level handler can run while the user IS inside a scene — then
+		// `exit()` must fire that scene's onExit hook, not just drop the key.
+		// The storage read is lazy: it only happens when exit() is called.
+		exit: async () => {
+			const sceneData = await storage.get(key);
+			if (!sceneData) return storage.delete(key);
+
+			const scene = scenes.find((x) => x.name === sceneData.name);
+			await scene?.["~scene"]?.exit?.(context);
+
+			return storage.delete(key);
+		},
 	};
 
 	if (withCurrentScene) {

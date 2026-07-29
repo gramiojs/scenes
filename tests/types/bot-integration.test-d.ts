@@ -41,9 +41,9 @@ describe("scenes([...]) accepts the scenes array", () => {
 //
 //      Fix prescription:
 //      The `scenes()` Plugin's derive on `["message", "callback_query"]`
-//      returns `{ scene: ... }` typed as `Omit<EnterExit, "exit">`
-//      (index.ts:142). That's far too loose — it should be typed as a
-//      union over the registered scene shapes:
+//      returns `{ scene: ... }` typed as `EnterExit`. That's still too
+//      loose — it should be typed as a union over the registered scene
+//      shapes:
 //        scene: {
 //          enter<S extends typeof RegisteredScenes[number]>(scene: S, ...): Promise<void>;
 //          exit(): MaybePromise<boolean>;
@@ -61,6 +61,20 @@ describe("bot.extend(scenes([scene])) — ctx.scene type quality", () => {
 			expectTypeOf(ctx.scene).not.toBeUndefined();
 			// .scene.enter exists
 			expectTypeOf(ctx.scene.enter).toBeFunction();
+		});
+
+		it("ctx.scene.exit() is typed at bot level (passthrough cancel flow)", () => {
+			// With `passthrough: true` (the default) a global handler can fire
+			// while the user is inside a scene, so exiting from there must
+			// typecheck — it's the documented /cancel pattern.
+			const myScene = new Scene("my");
+			const bot = new Bot("token").extend(scenes([myScene]));
+
+			bot.command("cancel", (ctx) => {
+				expectTypeOf(ctx.scene.exit).toBeFunction();
+				expectTypeOf(ctx.scene.exit).toBeCallableWith();
+				return ctx.scene.exit();
+			});
 		});
 	});
 
