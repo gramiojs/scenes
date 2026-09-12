@@ -41,7 +41,7 @@ npm install @gramio/scenes
 - **Step** is a sub-composer. Has lifecycle hooks (`.enter`, `.exit`, `.fallback`) **and** the full event DSL (`.on`, `.command`, `.callbackQuery`, `.hears`). One step = one screen / question / interaction point.
 - **`ctx.scene`** is the per-update handle: typed `state`, typed `params`, step navigation, enter/exit sub-scenes.
 
-State and step transitions are persisted in `Storage` keyed by user id — refresh-safe across bot restarts.
+State and step transitions are persisted in `Storage`, user-scoped by default and customizable for chat, thread, tenant, or other scopes — refresh-safe across bot restarts.
 
 ---
 
@@ -84,7 +84,7 @@ Telegram update
       │
       ▼
 ┌─────────────────────┐
-│ bot.extend(scenes)  │   plugin loads ScenesStorageData for ctx.from.id
+│ bot.extend(scenes)  │   plugin resolves a key and loads ScenesStorageData
 └──────────┬──────────┘
            │
            ▼
@@ -426,14 +426,17 @@ ctx.scene.exitSub(returnData?)               // return to parent, merge data
 ```typescript
 bot.extend(scenes([greeting, checkout, support], {
     storage: redisStorage({ host: "localhost", port: 6379 }),
+    getStorageKey: (ctx) =>
+        `@gramio/scenes:${ctx.from?.id ?? 0}:${ctx.chat?.id ?? 0}`,
     passthrough: true,    // default
 }));
 ```
 
-| Option        | Type      | Default             | Description                                                                                                  |
-| ------------- | --------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `storage`     | `Storage` | `inMemoryStorage()` | Where scene state is persisted (in-memory loses state on restart; use Redis / file / etc. for production).   |
-| `passthrough` | `boolean` | `true`              | If `true`, updates the active step doesn't claim fall through to outer bot handlers (`bot.command`, `bot.on`). Set `false` to make scenes greedy. |
+| Option          | Type                      | Default                                  | Description                                                                                                  |
+| --------------- | ------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `storage`       | `Storage`                 | `inMemoryStorage()`                      | Where scene state is persisted (in-memory loses state on restart; use Redis / file / etc. for production).   |
+| `getStorageKey` | `(context) => string`     | `@gramio/scenes:<userId>`                | Resolves the scope used consistently for reading, entering, updating, and exiting scenes.                    |
+| `passthrough`   | `boolean`                 | `true`                                   | If `true`, updates the active step doesn't claim fall through to outer bot handlers (`bot.command`, `bot.on`). Set `false` to make scenes greedy. |
 
 Because of `passthrough`, a global handler can run **while a scene is active** — so `ctx.scene.exit()` is available there too (it fires the scene's `onExit` hook before clearing storage, and is a no-op when the user isn't in a scene):
 
@@ -453,15 +456,21 @@ import { scenes, scenesDerives } from "@gramio/scenes";
 import { inMemoryStorage } from "@gramio/storage";
 
 const storage = inMemoryStorage();      // share the SAME storage across both
+const getStorageKey = (ctx) =>
+    `@gramio/scenes:${ctx.from?.id ?? 0}:${ctx.chat?.id ?? 0}`;
 
 bot
-    .extend(scenesDerives([myScene], { storage, withCurrentScene: true }))
+    .extend(scenesDerives([myScene], {
+        storage,
+        getStorageKey,
+        withCurrentScene: true,
+    }))
     .on("message", (ctx) => {
         if (ctx.scene.current?.is(myScene)) {
             // ctx.scene.current.state typed to myScene's state
         }
     })
-    .extend(scenes([myScene], { storage }));
+    .extend(scenes([myScene], { storage, getStorageKey }));
 ```
 
 ---
@@ -490,7 +499,7 @@ interface ParentSceneFrame {
 }
 ```
 
-Storage key: `@gramio/scenes:<userId>`. Schema changes are back-compat (new optional fields only) so persistent stores survive upgrades.
+The default storage key remains `@gramio/scenes:<userId>`. Override it with `getStorageKey` on `scenes()` and `scenesDerives()`; when both use the same storage, pass the same resolver to both. Schema changes are back-compat (new optional fields only) so persistent stores survive upgrades.
 
 ---
 
