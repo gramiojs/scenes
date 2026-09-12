@@ -7,6 +7,7 @@ import type {
 	PossibleInUnknownScene,
 	ScenesOptions,
 	ScenesStorageData,
+	ScenesStorageKeyResolver,
 } from "./types.js";
 import {
 	events,
@@ -18,6 +19,9 @@ import {
 
 export * from "./scene.js";
 export * from "./types.js";
+
+const defaultGetStorageKey: ScenesStorageKeyResolver = (context) =>
+	`@gramio/scenes:${context.from?.id ?? 0}`;
 
 interface ScenesDerivesOptions<WithCurrentScene extends boolean = false>
 	extends ScenesOptions {
@@ -38,6 +42,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 	const options = Array.isArray(scenesOrOptions) ? optionsRaw : scenesOrOptions;
 
 	const storage = options?.storage ?? inMemoryStorage();
+	const getStorageKey = options?.getStorageKey ?? defaultGetStorageKey;
 	const scenes = Array.isArray(scenesOrOptions)
 		? scenesOrOptions
 		: options?.scenes;
@@ -70,7 +75,6 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 		return {
 			scene: (await getSceneHandlers(
-				//@ts-expect-error
 				context as typeof context & {
 					scene: InActiveSceneHandlerReturn<any, any>;
 				},
@@ -78,6 +82,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 				withCurrentScene,
 				scenes ?? [],
 				allowedScenes,
+				getStorageKey,
 			)) as WithCurrentScene extends true
 				? PossibleInUnknownScene<any, any>
 				: EnterExit,
@@ -87,6 +92,7 @@ export function scenesDerives<WithCurrentScene extends boolean = false>(
 
 export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	const storage = options?.storage ?? inMemoryStorage();
+	const getStorageKey = options?.getStorageKey ?? defaultGetStorageKey;
 	const passthrough = options?.passthrough ?? true;
 	validateScenes(scenes);
 
@@ -99,7 +105,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 	// TODO: optimize storage usage
 	return new Plugin(pluginName)
 		.on(events, async (context, next) => {
-			const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
+			const key = getStorageKey(context);
 			const sceneData =
 				"scene" in context &&
 				typeof context.scene === "object" &&
@@ -108,7 +114,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 				typeof context.scene["~"] === "object" &&
 				context.scene["~"] &&
 				"data" in context.scene["~"]
-					? context.scene["~"].data as ScenesStorageData
+					? (context.scene["~"].data as ScenesStorageData)
 					: await storage.get(key);
 
 			// console.log("sceneData", sceneData);
@@ -123,7 +129,6 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 			};
 
 			ctx.scene = getInActiveSceneHandler(
-				// @ts-expect-error
 				ctx,
 				storage,
 				sceneData,
@@ -160,6 +165,7 @@ export function scenes(scenes: AnyScene[], options?: ScenesOptions) {
 					false,
 					scenes,
 					allowedScenes,
+					getStorageKey,
 				),
 			} as {
 				// TODO: Make it cleaner

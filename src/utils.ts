@@ -1,5 +1,5 @@
 import type { Storage } from "@gramio/storage";
-import type { Bot, ContextType, UpdateName } from "gramio";
+import type { UpdateName } from "gramio";
 import type { AnyScene } from "./scene.js";
 import type {
 	EnterExit,
@@ -12,18 +12,18 @@ import type {
 	SceneUpdateState,
 	ScenesStorage,
 	ScenesStorageData,
+	ScenesStorageKey,
+	ScenesStorageKeyContext,
+	ScenesStorageKeyResolver,
 	StateTypesDefault,
 } from "./types.js";
 
-type ContextWithFrom = Pick<
-	ContextType<Bot, "message" | "callback_query">,
-	"from"
->;
+type ContextWithFrom = ScenesStorageKeyContext;
 
 export function getSceneEnter(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: ScenesStorage,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneEnterHandler {
@@ -71,7 +71,7 @@ export function getSceneEnterSub(
 	context: ContextWithFrom & { scene: InActiveSceneHandlerReturn<any, any> },
 	storage: ScenesStorage,
 	currentSceneData: ScenesStorageData,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneEnterHandler {
@@ -127,7 +127,7 @@ export function getSceneExitSub(
 	currentScene: AnyScene,
 	storage: ScenesStorage,
 	sceneData: ScenesStorageData,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ) {
@@ -190,7 +190,7 @@ export function getSceneExit(
 	scene: AnyScene,
 	storage: Storage,
 	sceneData: ScenesStorageData,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 ) {
 	return async () => {
 		// Fire scene.onExit hook before tearing down storage
@@ -229,10 +229,11 @@ export async function getSceneHandlers<WithCurrentScene extends boolean>(
 	withCurrentScene: WithCurrentScene,
 	scenes: AnyScene[],
 	allowedScenes: string[],
+	getStorageKey: ScenesStorageKeyResolver,
 ): Promise<
 	WithCurrentScene extends true ? PossibleInUnknownScene<any, any> : EnterExit
 > {
-	const key = `@gramio/scenes:${context.from?.id ?? 0}` as const;
+	const key = getStorageKey(context);
 
 	const enterExit: EnterExit = {
 		enter: getSceneEnter(context, storage, key, allowedScenes, scenes),
@@ -286,7 +287,7 @@ export function getInActiveSceneHandler<
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): InActiveSceneHandlerReturn<Params, State, ExitData> {
@@ -383,7 +384,7 @@ export function getStepDerives(
 	storage: Storage,
 	storageData: ScenesStorageData<any, any>,
 	scene: AnyScene,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): SceneStepReturn {
@@ -458,7 +459,7 @@ export function getInUnknownScene<Params, State extends StateTypesDefault>(
 	storage: Storage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): InUnknownScene<Params, State> {
@@ -485,7 +486,7 @@ export function getPossibleInSceneHandlers<
 	storage: ScenesStorage,
 	sceneData: ScenesStorageData<Params, State>,
 	scene: AnyScene,
-	key: `@gramio/scenes:${string | number}`,
+	key: ScenesStorageKey,
 	allowedScenes: string[],
 	allScenes: AnyScene[],
 ): PossibleInUnknownScene<Params, State> {

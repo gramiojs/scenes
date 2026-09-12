@@ -1,5 +1,5 @@
 import type { Storage } from "@gramio/storage";
-import type { MaybePromise } from "gramio";
+import type { BotLike, Chat, Context, MaybePromise, User } from "gramio";
 import type { AnyScene, Scene } from "./scene.js";
 
 export type Modify<Base, Mod> = Omit<Base, keyof Mod> & Mod;
@@ -8,15 +8,36 @@ export type StateTypesDefault = Record<string | number, any>;
 
 export type UpdateData<T extends StateTypesDefault> = {};
 
+export type ScenesStorageKey = string;
+
+/**
+ * The context available to a scene storage-key resolver.
+ *
+ * `from` and `chat` are optional because not every Telegram update has both.
+ * The base context still exposes `is()` for narrowing to a specific update.
+ */
+export type ScenesStorageKeyContext = Context<BotLike> & {
+	readonly from?: User;
+	readonly chat?: Chat;
+};
+
+export type ScenesStorageKeyResolver = (
+	context: ScenesStorageKeyContext,
+) => ScenesStorageKey;
+
 export type ScenesStorage = Storage<
-	Record<
-		`@gramio/scenes:${string | number}`,
-		ScenesStorageData<unknown, unknown>
-	>
+	Record<ScenesStorageKey, ScenesStorageData<unknown, unknown>>
 >;
 
 export interface ScenesOptions {
 	storage?: ScenesStorage;
+	/**
+	 * Resolves the storage key for the current update. Use the same resolver
+	 * when `scenes()` and `scenesDerives()` share a storage instance.
+	 *
+	 * @default `context => "@gramio/scenes:<userId>"`
+	 */
+	getStorageKey?: ScenesStorageKeyResolver;
 	/**
 	 * Controls what happens to updates that arrive while the user is inside
 	 * a scene but do not match the current step (wrong update type, or no
